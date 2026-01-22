@@ -60,13 +60,13 @@ export default function AuthPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="password">Password{loginData.username.toLowerCase() === "jmkuczynski" ? " (Optional for JMKUCZYNSKI)" : ""}</Label>
+                    <Label htmlFor="password">Password</Label>
                     <Input
                       id="password"
                       type="password"
                       value={loginData.password}
                       onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                      required={loginData.username.toLowerCase() !== "jmkuczynski"}
+                      required
                       data-testid="input-password-login"
                     />
                   </div>

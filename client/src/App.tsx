@@ -94,15 +94,13 @@ function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
                 />
               </div>
               <div>
-                <Label htmlFor="login-password">
-                  Password{loginForm.username.toLowerCase().trim() === "jmkuczynski" ? " (Optional for JMKUCZYNSKI)" : ""}
-                </Label>
+                <Label htmlFor="login-password">Password</Label>
                 <Input
                   id="login-password"
                   type="password"
                   value={loginForm.password}
                   onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                  required={loginForm.username.toLowerCase().trim() !== "jmkuczynski"}
+                  required
                   autoComplete="current-password"
                   data-testid="input-login-password"
                 />

@@ -70,21 +70,7 @@ export function setupAuth(app: Express) {
       try {
         const normalizedUsername = (username || "").trim().toLowerCase();
         
-        // Special case: JMK can log in with any password (DEVELOPMENT ONLY)
-        if (normalizedUsername === "jmk") {
-          let user = await storage.getUserByUsername(normalizedUsername);
-          if (!user) {
-            // Create the special user if they don't exist
-            user = await storage.createUser({
-              username: normalizedUsername,
-              password: await hashPassword("dev123"),
-              email: "jmk@neurotext.io"
-            });
-          }
-          return done(null, user);
-        }
-
-        // Regular authentication for all other users
+        // Regular authentication for all users
         const user = await storage.getUserByUsername(normalizedUsername);
         if (!user || !(await comparePasswords(password, user.password))) {
           return done(null, false);
@@ -194,42 +180,13 @@ export function setupAuth(app: Express) {
     const normalizedUsername = String(req.body.username || "").trim().toLowerCase();
     req.body.username = normalizedUsername;
     
-    // Special case for JMK - bypass passport entirely (auto-login user)
-    if (normalizedUsername === "jmk") {
-      try {
-        let user = await storage.getUserByUsername(normalizedUsername);
-        if (!user) {
-          console.log("[Auth] Creating JMK user...");
-          user = await storage.createUser({
-            username: normalizedUsername,
-            password: await hashPassword("dev123"),
-            email: "jmk@neurotext.io"
-          });
-          console.log("[Auth] JMK user created successfully");
-        }
-        
-        req.login(user, (err) => {
-          if (err) {
-            console.error("[Auth] JMK login session error:", err);
-            return res.status(500).json({ message: "Session error: " + err.message });
-          }
-          console.log("[Auth] JMK logged in successfully");
-          res.status(200).json(user);
-        });
-        return; // Exit early for JMK
-      } catch (error: any) {
-        console.error("[Auth] JMK login error:", error);
-        return res.status(500).json({ message: "Login error: " + (error.message || "Unknown error") });
-      }
-    } else {
-      // Regular validation for other users
-      const validationResult = loginSchema.safeParse(req.body);
-      if (!validationResult.success) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
-          errors: validationResult.error.errors 
-        });
-      }
+    // Validate login data
+    const validationResult = loginSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ 
+        message: "Validation failed", 
+        errors: validationResult.error.errors 
+      });
     }
 
     passport.authenticate("local", (err: any, user: any) => {

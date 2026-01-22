@@ -103,7 +103,6 @@ The application employs a monorepo structure, separating client and server compo
             - ChatGPT/OpenAI (ZHI 1): 5x
             - Claude/Anthropic (ZHI 2): 7x
             - Perplexity (ZHI 4): 7x
-        - **JMK User**: Unlimited credits (bypasses all credit checks)
         - **Real-time Balance**: Updates every 3 seconds in header
         - **Credit Deduction**: Calculated after each LLM response based on tokens generated
 

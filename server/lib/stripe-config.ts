@@ -19,10 +19,10 @@ export const NEUROTEXT_CREDITS_PACKAGE = {
   priceId: process.env.STRIPE_PRICE_ID_100,
 };
 
-// Helper to check if user has unlimited credits (JMK user)
+// Helper to check if user has unlimited credits
 export function hasUnlimitedCredits(username: string | undefined): boolean {
-  if (!username) return false;
-  return username.toLowerCase() === "jmk" || username.toLowerCase() === "jmkuczynski";
+  // No users have unlimited credits - all users must purchase credits
+  return false;
 }
 
 // Calculate token count from text (rough estimate: 1 token ≈ 4 characters)
