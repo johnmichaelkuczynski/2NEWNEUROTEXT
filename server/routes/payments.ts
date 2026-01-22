@@ -41,10 +41,10 @@ export function registerPaymentRoutes(app: Express) {
         metadata: { package: "neurotext-100" },
       });
 
-      // Build success/cancel URLs
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : 'http://localhost:5000';
+      // Build success/cancel URLs - use deployed domain, not localhost
+      const domain = process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS?.split(',')[0];
+      const baseUrl = domain ? `https://${domain}` : `https://${req.get('host')}`;
+      console.log(`[Stripe Checkout] Success/Cancel URL base: ${baseUrl}`);
 
       // Create Stripe Checkout Session using the pre-configured Price ID
       const session = await stripe.checkout.sessions.create({
