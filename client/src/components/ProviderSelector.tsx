@@ -35,15 +35,30 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
               <TooltipTrigger asChild>
                 <Info className="h-4 w-4 text-gray-400 cursor-help" />
               </TooltipTrigger>
-              <TooltipContent className="max-w-sm">
-                <p>Choose which ZHI model to use for document analysis:</p>
-                <ul className="list-disc pl-5 mt-2 text-sm">
-                  <li><span className="font-medium">ZHI 1</span> - Excellent for detailed analysis, strong at recognizing complex patterns</li>
-                  <li><span className="font-medium">ZHI 2</span> - Very good at nuanced text interpretation and detailed reasoning</li>
-                  <li><span className="font-medium">ZHI 3</span> - Strong analytical capabilities with efficient processing</li>
-                  <li><span className="font-medium">ZHI 4</span> - Advanced search-augmented model with strong research capabilities</li>
-                  <li><span className="font-medium">ZHI 5</span> - High-performance model for complex reasoning tasks</li>
-                </ul>
+              <TooltipContent className="max-w-xs p-3">
+                <p className="font-medium mb-2">ZHI Model Guide</p>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between gap-3">
+                    <span><span className="font-semibold">ZHI 1</span> — General purpose, follows instructions best</span>
+                    <span className="text-amber-500 flex-shrink-0">$$$</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span><span className="font-semibold">ZHI 2</span> — Complex writing, long documents</span>
+                    <span className="text-amber-500 flex-shrink-0">$$$$</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span><span className="font-semibold">ZHI 3</span> — Math & logic</span>
+                    <span className="text-green-500 flex-shrink-0">$</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span><span className="font-semibold">ZHI 4</span> — Factual lookup with sources</span>
+                    <span className="text-amber-500 flex-shrink-0">$$$$</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span><span className="font-semibold">ZHI 5</span> — Casual, current events</span>
+                    <span className="text-yellow-500 flex-shrink-0">$$</span>
+                  </div>
+                </div>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
