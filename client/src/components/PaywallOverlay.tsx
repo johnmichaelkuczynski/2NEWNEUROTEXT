@@ -61,7 +61,7 @@ export function PaywallOverlay({ totalWords, visibleWords, percentageShown }: Pa
         
         <Button
           onClick={handleBuyCredits}
-          className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold px-6 py-3 text-base"
+          className="bg-gray-900 dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-100 text-white dark:text-gray-900 font-bold px-8 py-3 text-base shadow-md"
           data-testid="button-buy-credits-paywall"
         >
           <CreditCard className="w-5 h-5 mr-2" />
