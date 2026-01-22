@@ -49,7 +49,7 @@ export function PaywallOverlay({ totalWords, visibleWords, percentageShown }: Pa
     }
     
     try {
-      const response = await fetch('/api/payments/create-checkout', {
+      const response = await fetch('/api/payments/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'

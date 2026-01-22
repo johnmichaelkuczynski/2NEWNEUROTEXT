@@ -337,7 +337,7 @@ function Router({ resetKey }: { resetKey: number }) {
         // Redirect to Stripe checkout
         const initiateCheckout = async () => {
           try {
-            const response = await apiRequest("POST", "/api/payments/create-checkout", {});
+            const response = await apiRequest("POST", "/api/payments/checkout", {});
             const data = await response.json();
             if (data.url) {
               window.location.href = data.url;
