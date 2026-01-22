@@ -61,8 +61,8 @@ export function PaywallOverlay({ totalWords, visibleWords, percentageShown }: Pa
         
         <Button
           onClick={handleBuyCredits}
-          variant="default"
           size="lg"
+          className="!bg-[#2563eb] !text-white hover:!bg-[#1d4ed8] font-bold"
           data-testid="button-buy-credits-paywall"
         >
           <CreditCard className="w-5 h-5 mr-2" />
