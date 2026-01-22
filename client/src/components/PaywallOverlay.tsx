@@ -39,6 +39,30 @@ export function PaywallOverlay({ totalWords, visibleWords, percentageShown }: Pa
   
   return (
     <div className="relative mt-4">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .paywall-buy-btn {
+          background: #C41E3A !important;
+          color: #FFFFFF !important;
+          font-weight: 900 !important;
+          font-size: 18px !important;
+          padding: 16px 40px !important;
+          border-radius: 9999px !important;
+          border: none !important;
+          cursor: pointer !important;
+          text-transform: uppercase !important;
+          letter-spacing: 1px !important;
+          display: inline-block !important;
+          text-decoration: none !important;
+          box-shadow: 0 4px 14px rgba(196, 30, 58, 0.4) !important;
+          transition: all 0.2s ease !important;
+        }
+        .paywall-buy-btn:hover {
+          background: #A01830 !important;
+          box-shadow: 0 6px 20px rgba(196, 30, 58, 0.5) !important;
+          transform: translateY(-1px) !important;
+        }
+      `}} />
+      
       <div className="absolute inset-0 bg-gradient-to-t from-white dark:from-gray-900 via-white/95 dark:via-gray-900/95 to-transparent pointer-events-none" style={{ height: '150px', bottom: 0, top: 'auto' }} />
       
       <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border-2 border-amber-300 dark:border-amber-700 rounded-lg p-6 text-center shadow-lg">
@@ -60,18 +84,7 @@ export function PaywallOverlay({ totalWords, visibleWords, percentageShown }: Pa
         
         <button
           onClick={handleBuyCredits}
-          style={{
-            backgroundColor: '#dc2626',
-            color: 'white',
-            fontWeight: 'bold',
-            fontSize: '18px',
-            padding: '16px 32px',
-            borderRadius: '9999px',
-            border: 'none',
-            cursor: 'pointer',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px'
-          }}
+          className="paywall-buy-btn"
           data-testid="button-buy-credits-paywall"
         >
           BUY CREDITS TO SEE FULL CONTENT
