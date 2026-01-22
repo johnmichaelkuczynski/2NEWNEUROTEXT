@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Loader2, Sparkles, Zap } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -67,30 +67,9 @@ export function BuyCreditsDialog({ open, onOpenChange }: BuyCreditsDialogProps) 
             <div className="text-center space-y-4">
               <div className="text-4xl font-bold text-primary">$100</div>
               <div className="text-2xl font-semibold">1,000 Credits</div>
-              
-              <div className="text-sm text-muted-foreground space-y-2 text-left">
-                <div className="font-medium text-foreground mb-2">Credit Usage (per token generated):</div>
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-green-500" />
-                  <span>DeepSeek: 1x multiplier</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-blue-500" />
-                  <span>Grok: 3x multiplier</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-orange-500" />
-                  <span>ChatGPT: 5x multiplier</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-purple-500" />
-                  <span>Claude: 7x multiplier</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-purple-500" />
-                  <span>Perplexity: 7x multiplier</span>
-                </div>
-              </div>
+              <p className="text-muted-foreground">
+                Use credits for AI-powered text reconstruction, coherence analysis, and document expansion.
+              </p>
             </div>
           </Card>
 
