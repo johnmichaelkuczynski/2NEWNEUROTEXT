@@ -1,15 +1,9 @@
 import type { Express, Request, Response } from "express";
-import { stripe, isStripeConfigured, CREDIT_PACKAGES, type Provider, type PriceTier, hasUnlimitedCredits } from "../lib/stripe-config";
+import { stripe, isStripeConfigured, NEUROTEXT_CREDITS_PACKAGE, hasUnlimitedCredits } from "../lib/stripe-config";
 import { storage } from "../storage";
-import { z } from "zod";
-
-const checkoutSchema = z.object({
-  provider: z.enum(["openai", "anthropic", "perplexity", "deepseek"]),
-  amount: z.union([z.literal(5), z.literal(10), z.literal(25), z.literal(50), z.literal(100)]),
-});
 
 export function registerPaymentRoutes(app: Express) {
-  // Create Stripe Checkout Session
+  // Create Stripe Checkout Session for $100 NeuroText Credits package
   app.post("/api/payments/checkout", async (req: Request, res: Response) => {
     try {
       if (!isStripeConfigured || !stripe) {
@@ -27,52 +21,44 @@ export function registerPaymentRoutes(app: Express) {
         });
       }
 
-      const validation = checkoutSchema.safeParse(req.body);
-      if (!validation.success) {
-        return res.status(400).json({ 
-          message: "Invalid request", 
-          errors: validation.error.errors 
-        });
+      // Get the price ID from environment
+      const priceId = process.env.STRIPE_PRICE_ID_100;
+      if (!priceId) {
+        return res.status(503).json({ message: "Stripe price not configured" });
       }
-
-      const { provider, amount } = validation.data;
-      const packageInfo = CREDIT_PACKAGES[provider as Provider][amount as PriceTier];
 
       // Create pending transaction
       const transaction = await storage.createCreditTransaction({
         userId: req.user.id,
-        provider,
-        amount: packageInfo.priceInCents,
-        credits: packageInfo.credits,
+        provider: "neurotext",
+        amount: NEUROTEXT_CREDITS_PACKAGE.priceInCents,
+        credits: NEUROTEXT_CREDITS_PACKAGE.credits,
         transactionType: "purchase",
         status: "pending",
-        metadata: { package: `${provider}-${amount}` },
+        metadata: { package: "neurotext-100" },
       });
 
-      // Create Stripe Checkout Session
+      // Build success/cancel URLs
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : 'http://localhost:5000';
+
+      // Create Stripe Checkout Session using the pre-configured Price ID
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         line_items: [
           {
-            price_data: {
-              currency: "usd",
-              product_data: {
-                name: `${provider.toUpperCase()} Credits - $${amount}`,
-                description: `${packageInfo.credits.toLocaleString()} word credits for ${provider}`,
-              },
-              unit_amount: packageInfo.priceInCents,
-            },
+            price: priceId,
             quantity: 1,
           },
         ],
         mode: "payment",
-        success_url: `${process.env.REPLIT_DEV_DOMAIN || 'http://localhost:5000'}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.REPLIT_DEV_DOMAIN || 'http://localhost:5000'}?payment=cancelled`,
+        success_url: `${baseUrl}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}?payment=cancelled`,
         client_reference_id: String(req.user.id),
         metadata: {
           userId: String(req.user.id),
-          provider,
-          credits: String(packageInfo.credits),
+          credits: String(NEUROTEXT_CREDITS_PACKAGE.credits),
           transactionId: String(transaction.id),
         },
       });
@@ -118,20 +104,19 @@ export function registerPaymentRoutes(app: Express) {
       
       try {
         const userId = parseInt(session.metadata.userId);
-        const provider = session.metadata.provider;
         const credits = parseInt(session.metadata.credits);
         const transactionId = parseInt(session.metadata.transactionId);
 
-        // Get current credits or initialize
-        let userCredits = await storage.getUserCredits(userId, provider);
+        // Get current credits or initialize for "neurotext" provider (general credits)
+        let userCredits = await storage.getUserCredits(userId, "neurotext");
         if (!userCredits) {
-          userCredits = await storage.initializeUserCredits(userId, provider);
+          userCredits = await storage.initializeUserCredits(userId, "neurotext");
         }
 
-        // Add purchased credits
+        // Add 1000 credits
         await storage.updateUserCredits(
           userId,
-          provider,
+          "neurotext",
           userCredits.credits + credits
         );
 
@@ -142,7 +127,7 @@ export function registerPaymentRoutes(app: Express) {
           session.payment_intent as string
         );
 
-        console.log(`✅ Credits added: ${credits} ${provider} credits for user ${userId}`);
+        console.log(`✅ Credits added: ${credits} NeuroText credits for user ${userId}`);
       } catch (error) {
         console.error("Error processing webhook:", error);
       }
@@ -151,17 +136,12 @@ export function registerPaymentRoutes(app: Express) {
     res.json({ received: true });
   });
 
-  // Get user credit balances
+  // Get user credit balance
   app.get("/api/credits/balance", async (req: Request, res: Response) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
-        // Return zero credits for unauthenticated users
         return res.json({
-          openai: 0,
-          anthropic: 0,
-          perplexity: 0,
-          deepseek: 0,
-          stripe: 0,
+          credits: 0,
           total: 0,
           unlimited: false,
         });
@@ -170,11 +150,7 @@ export function registerPaymentRoutes(app: Express) {
       // Check for unlimited credits
       if (hasUnlimitedCredits(req.user.username)) {
         return res.json({
-          openai: Infinity,
-          anthropic: Infinity,
-          perplexity: Infinity,
-          deepseek: Infinity,
-          stripe: Infinity,
+          credits: Infinity,
           total: Infinity,
           unlimited: true,
         });
@@ -182,26 +158,16 @@ export function registerPaymentRoutes(app: Express) {
 
       const credits = await storage.getAllUserCredits(req.user.id);
       
-      const balance: Record<string, number | boolean> = {
-        openai: 0,
-        anthropic: 0,
-        perplexity: 0,
-        deepseek: 0,
-        stripe: 0,
-        unlimited: false,
-        total: 0,
-      };
-
       let total = 0;
       credits.forEach((credit) => {
-        if (credit.provider in balance) {
-          balance[credit.provider as Provider] = credit.credits;
-        }
         total += credit.credits;
       });
-      balance.total = total;
 
-      res.json(balance);
+      res.json({
+        credits: total,
+        total: total,
+        unlimited: false,
+      });
     } catch (error: any) {
       console.error("Error fetching balance:", error);
       res.status(500).json({ message: "Error fetching credit balance" });

@@ -10,41 +10,14 @@ export const isStripeConfigured = !!process.env.STRIPE_SECRET_KEY;
 // Log Stripe configuration status at module load
 console.log(`[Stripe] Configuration status: ${isStripeConfigured ? 'CONFIGURED' : 'NOT CONFIGURED'}`);
 console.log(`[Stripe] Webhook secret: ${process.env.STRIPE_WEBHOOK_SECRET ? 'SET' : 'NOT SET'}`);
+console.log(`[Stripe] Price ID $100: ${process.env.STRIPE_PRICE_ID_100 ? 'SET' : 'NOT SET'}`);
 
-// Price schedule for credit packages
-export const CREDIT_PACKAGES = {
-  openai: {
-    5: { credits: 4_275_000, priceInCents: 500 },
-    10: { credits: 8_977_500, priceInCents: 1000 },
-    25: { credits: 23_512_500, priceInCents: 2500 },
-    50: { credits: 51_300_000, priceInCents: 5000 },
-    100: { credits: 115_425_000, priceInCents: 10000 },
-  },
-  anthropic: {
-    5: { credits: 106_840, priceInCents: 500 },
-    10: { credits: 224_360, priceInCents: 1000 },
-    25: { credits: 587_625, priceInCents: 2500 },
-    50: { credits: 1_282_100, priceInCents: 5000 },
-    100: { credits: 2_883_400, priceInCents: 10000 },
-  },
-  perplexity: {
-    5: { credits: 702_000, priceInCents: 500 },
-    10: { credits: 1_474_200, priceInCents: 1000 },
-    25: { credits: 3_861_000, priceInCents: 2500 },
-    50: { credits: 8_424_000, priceInCents: 5000 },
-    100: { credits: 18_954_000, priceInCents: 10000 },
-  },
-  deepseek: {
-    5: { credits: 6_410_255, priceInCents: 500 },
-    10: { credits: 13_461_530, priceInCents: 1000 },
-    25: { credits: 35_256_400, priceInCents: 2500 },
-    50: { credits: 76_923_050, priceInCents: 5000 },
-    100: { credits: 173_176_900, priceInCents: 10000 },
-  },
-} as const;
-
-export type Provider = keyof typeof CREDIT_PACKAGES;
-export type PriceTier = keyof typeof CREDIT_PACKAGES.openai;
+// Single $100 package: 1000 credits
+export const NEUROTEXT_CREDITS_PACKAGE = {
+  priceInCents: 10000, // $100
+  credits: 1000,
+  priceId: process.env.STRIPE_PRICE_ID_100,
+};
 
 // Helper to check if user has unlimited credits (JMK user)
 export function hasUnlimitedCredits(username: string | undefined): boolean {
@@ -52,7 +25,7 @@ export function hasUnlimitedCredits(username: string | undefined): boolean {
   return username.toLowerCase() === "jmk" || username.toLowerCase() === "jmkuczynski";
 }
 
-// Calculate word count for credit deduction
-export function calculateWordCount(text: string): number {
-  return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+// Calculate token count from text (rough estimate: 1 token ≈ 4 characters)
+export function estimateTokenCount(text: string): number {
+  return Math.ceil(text.length / 4);
 }

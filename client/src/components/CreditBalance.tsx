@@ -2,11 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CreditCard } from "lucide-react";
 
 interface CreditBalanceData {
-  openai: number;
-  anthropic: number;
-  perplexity: number;
-  deepseek: number;
-  stripe: number;
+  credits: number;
   total: number;
   unlimited: boolean;
 }

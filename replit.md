@@ -95,6 +95,24 @@ The application employs a monorepo structure, separating client and server compo
         - **NO PUFFERY Rule**: Every word must carry substantive meaning. No filler or decorative language
         - **NO HEDGING Rule**: Never use hedging language like "may", "might", "perhaps", "arguably"
         - **ZHI 1 Default**: Default LLM provider is now ZHI 1 (OpenAI)
+    - **Credit System** (Jan 2026): Token-based credit deduction with provider multipliers:
+        - **$100 Package**: 1000 credits via Stripe (STRIPE_PRICE_ID_100)
+        - **Token Multipliers** (credits = tokens generated × multiplier):
+            - DeepSeek (ZHI 3): 1x
+            - Grok (ZHI 5): 3x
+            - ChatGPT/OpenAI (ZHI 1): 5x
+            - Claude/Anthropic (ZHI 2): 7x
+            - Perplexity (ZHI 4): 7x
+        - **JMK User**: Unlimited credits (bypasses all credit checks)
+        - **Real-time Balance**: Updates every 3 seconds in header
+        - **Credit Deduction**: Calculated after each LLM response based on tokens generated
+
+## ZHI Provider Mapping
+- **ZHI 1**: OpenAI (GPT-4)
+- **ZHI 2**: Anthropic (Claude)
+- **ZHI 3**: DeepSeek
+- **ZHI 4**: Perplexity
+- **ZHI 5**: Grok (xAI)
 
 ## Verified Milestones & Restore Points
 

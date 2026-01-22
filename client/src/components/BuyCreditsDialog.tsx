@@ -1,10 +1,7 @@
-import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles, Zap } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -18,23 +15,12 @@ interface BuyCreditsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const PROVIDERS = [
-  { id: "openai", name: "ZHI 1", packages: { 5: "4.3M", 10: "9M", 25: "23.5M", 50: "51.3M", 100: "115.4M" } },
-  { id: "anthropic", name: "ZHI 2", packages: { 5: "107K", 10: "224K", 25: "588K", 50: "1.3M", 100: "2.9M" } },
-  { id: "deepseek", name: "ZHI 3", packages: { 5: "6.4M", 10: "13.5M", 25: "35.3M", 50: "76.9M", 100: "173.2M" } },
-  { id: "perplexity", name: "ZHI 4", packages: { 5: "702K", 10: "1.5M", 25: "3.9M", 50: "8.4M", 100: "19M" } },
-];
-
-const PRICE_TIERS = [5, 10, 25, 50, 100];
-
 export function BuyCreditsDialog({ open, onOpenChange }: BuyCreditsDialogProps) {
-  const [provider, setProvider] = useState("openai");
-  const [amount, setAmount] = useState(5);
   const { toast } = useToast();
 
   const checkoutMutation = useMutation({
-    mutationFn: async ({ provider, amount }: { provider: string; amount: number }) => {
-      const response = await apiRequest("POST", "/api/payments/checkout", { provider, amount });
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/payments/checkout", {});
       return await response.json();
     },
     onSuccess: async (data) => {
@@ -44,15 +30,14 @@ export function BuyCreditsDialog({ open, onOpenChange }: BuyCreditsDialogProps) 
         return;
       }
       
-      // Save current state to localStorage before redirect
-      const currentState = {
+      // Save pending purchase state
+      localStorage.setItem("neurotext:pending-purchase", JSON.stringify({
         timestamp: Date.now(),
-        provider,
-        amount,
-      };
-      localStorage.setItem("cap:pending-purchase", JSON.stringify(currentState));
+        amount: 100,
+        credits: 1000,
+      }));
       
-      // Redirect to Stripe Checkout using the checkout URL
+      // Redirect to Stripe Checkout
       window.location.href = data.url;
     },
     onError: (error: any) => {
@@ -64,67 +49,73 @@ export function BuyCreditsDialog({ open, onOpenChange }: BuyCreditsDialogProps) 
     },
   });
 
-  const selectedProvider = PROVIDERS.find(p => p.id === provider);
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Buy Credits</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            Buy NeuroText Credits
+          </DialogTitle>
           <DialogDescription>
-            Purchase word credits for AI analysis. Credits are specific to each AI provider.
+            Purchase credits for AI-powered text analysis and reconstruction.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <Label>Select AI Provider</Label>
-            <RadioGroup value={provider} onValueChange={setProvider}>
-              {PROVIDERS.map((p) => (
-                <div key={p.id} className="flex items-center space-x-2">
-                  <RadioGroupItem value={p.id} id={p.id} data-testid={`radio-provider-${p.id}`} />
-                  <Label htmlFor={p.id} className="cursor-pointer">
-                    {p.name}
-                  </Label>
+        <div className="space-y-6 py-4">
+          <Card className="p-6 border-2 border-primary bg-primary/5">
+            <div className="text-center space-y-4">
+              <div className="text-4xl font-bold text-primary">$100</div>
+              <div className="text-2xl font-semibold">1,000 Credits</div>
+              
+              <div className="text-sm text-muted-foreground space-y-2 text-left">
+                <div className="font-medium text-foreground mb-2">Credit Usage (per token generated):</div>
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-green-500" />
+                  <span>DeepSeek: 1x multiplier</span>
                 </div>
-              ))}
-            </RadioGroup>
-          </div>
-
-          <div className="space-y-3">
-            <Label>Select Package</Label>
-            <div className="grid grid-cols-5 gap-3">
-              {PRICE_TIERS.map((tier) => (
-                <Card
-                  key={tier}
-                  className={`p-4 cursor-pointer transition-all ${
-                    amount === tier
-                      ? "border-primary border-2 bg-primary/5"
-                      : "hover:border-gray-400"
-                  }`}
-                  onClick={() => setAmount(tier)}
-                  data-testid={`card-tier-${tier}`}
-                >
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">${tier}</div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      {selectedProvider?.packages[tier as keyof typeof selectedProvider.packages]} words
-                    </div>
-                  </div>
-                </Card>
-              ))}
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-blue-500" />
+                  <span>Grok: 3x multiplier</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-orange-500" />
+                  <span>ChatGPT: 5x multiplier</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-purple-500" />
+                  <span>Claude: 7x multiplier</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-purple-500" />
+                  <span>Perplexity: 7x multiplier</span>
+                </div>
+              </div>
             </div>
-          </div>
+          </Card>
 
           <Button
-            onClick={() => checkoutMutation.mutate({ provider, amount })}
+            onClick={() => checkoutMutation.mutate()}
             disabled={checkoutMutation.isPending}
-            className="w-full"
+            className="w-full h-12 text-lg"
             data-testid="button-checkout"
           >
-            {checkoutMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Purchase ${amount} Package
+            {checkoutMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-5 w-5" />
+                Purchase Credits - $100
+              </>
+            )}
           </Button>
+          
+          <p className="text-xs text-center text-muted-foreground">
+            Secure payment powered by Stripe. Credits are non-refundable.
+          </p>
         </div>
       </DialogContent>
     </Dialog>

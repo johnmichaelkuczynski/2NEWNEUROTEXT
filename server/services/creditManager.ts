@@ -1,19 +1,30 @@
 import { storage } from "../storage";
 import { hasUnlimitedCredits as checkUnlimited } from "../lib/stripe-config";
 
-export const CREDIT_COSTS: Record<string, number> = {
+// Token multipliers for credit calculation
+// Credits = tokens generated * multiplier
+export const TOKEN_MULTIPLIERS: Record<string, number> = {
   deepseek: 1,
-  grok: 20,
-  perplexity: 20,
-  openai: 25,
-  anthropic: 35,
-  claude: 35,
+  grok: 3,
+  openai: 5,
+  chatgpt: 5,
+  anthropic: 7,
+  claude: 7,
+  perplexity: 7,
 };
+
+// Calculate credits from tokens generated
+export function calculateCreditsFromTokens(tokensGenerated: number, provider: string): number {
+  const normalizedProvider = provider.toLowerCase();
+  const multiplier = TOKEN_MULTIPLIERS[normalizedProvider] || TOKEN_MULTIPLIERS.openai;
+  return Math.ceil(tokensGenerated * multiplier);
+}
 
 export async function checkAndDeductCredits(
   userId: number | undefined,
   username: string | undefined,
-  provider: string
+  provider: string,
+  tokensGenerated?: number
 ): Promise<{ success: boolean; error?: string; creditsDeducted?: number }> {
   if (!userId) {
     return { success: false, error: "User not authenticated" };
@@ -23,8 +34,10 @@ export async function checkAndDeductCredits(
     return { success: true, creditsDeducted: 0 };
   }
 
-  const normalizedProvider = provider.toLowerCase();
-  const cost = CREDIT_COSTS[normalizedProvider] || CREDIT_COSTS.openai;
+  // Calculate credits based on tokens if provided, otherwise use minimum cost
+  const cost = tokensGenerated 
+    ? calculateCreditsFromTokens(tokensGenerated, provider)
+    : getMinimumCost(provider);
 
   const totalCredits = await storage.getTotalUserCredits(userId);
 
@@ -57,13 +70,24 @@ export async function checkAndDeductCredits(
     };
   }
 
-  console.log(`[CreditManager] Deducted ${cost} credits for ${provider} from user ${userId}`);
+  console.log(`[CreditManager] Deducted ${cost} credits for ${provider} from user ${userId} (tokens: ${tokensGenerated || 'N/A'})`);
   return { success: true, creditsDeducted: cost };
 }
 
-export function getCreditCost(provider: string): number {
+// Get minimum cost for a provider (for pre-checks before token count is known)
+export function getMinimumCost(provider: string): number {
   const normalizedProvider = provider.toLowerCase();
-  return CREDIT_COSTS[normalizedProvider] || CREDIT_COSTS.openai;
+  // Minimum cost is 1 token * multiplier
+  return TOKEN_MULTIPLIERS[normalizedProvider] || TOKEN_MULTIPLIERS.openai;
+}
+
+export function getCreditCost(provider: string, tokensGenerated: number = 1): number {
+  return calculateCreditsFromTokens(tokensGenerated, provider);
+}
+
+export function getMultiplier(provider: string): number {
+  const normalizedProvider = provider.toLowerCase();
+  return TOKEN_MULTIPLIERS[normalizedProvider] || TOKEN_MULTIPLIERS.openai;
 }
 
 export { checkUnlimited as hasUnlimitedCredits };
