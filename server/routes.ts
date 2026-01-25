@@ -2962,11 +2962,12 @@ Structural understanding is always understanding of relationships. Observational
   // NEUROTEXT REQUIREMENT: Allow instructions-only mode
   app.post("/api/text-model-validator", async (req: Request, res: Response) => {
     try {
-      const { text, mode, targetDomain, fidelityLevel, mathFramework, constraintType, rigorLevel, customInstructions, truthMapping, mathTruthMapping, literalTruth, llmProvider, instructionsOnly } = req.body;
+      const { text, mode, targetDomain, fidelityLevel, mathFramework, constraintType, rigorLevel, customInstructions, truthMapping, mathTruthMapping, literalTruth, llmProvider, instructionsOnly, targetWordCount } = req.body;
 
       // NEUROTEXT: Allow instructions-only mode - text OR customInstructions is sufficient
       const hasText = text && text.trim().length > 0;
       const hasInstructions = customInstructions && customInstructions.trim().length > 0;
+      const hasTargetWordCount = targetWordCount && parseInt(targetWordCount) > 0;
       
       if (!mode) {
         return res.status(400).json({ 
@@ -2997,10 +2998,27 @@ Structural understanding is always understanding of relationships. Observational
       // Count input words to determine expansion behavior
       const inputWordCount = effectiveText.trim().split(/\s+/).length;
       
+      // CRITICAL: Use targetWordCount from UI if provided
+      const parsedTargetWordCount = hasTargetWordCount ? parseInt(targetWordCount) : 0;
+      
       // AUTO-GENERATE INSTRUCTIONS when user provides text but no instructions
       let effectiveInstructions = customInstructions || '';
-      if (hasText && !hasInstructions) {
-        // User provided text but no instructions → AUTO-EXPAND
+      
+      // If user specified a target word count in the UI, ALWAYS prepend EXPAND TO X WORDS
+      // This ensures the universal expansion system knows the target
+      if (hasTargetWordCount && parsedTargetWordCount > 0) {
+        // Check if instructions already contain an expand directive
+        const hasExpandDirective = /expand\s*(to|into)?\s*\d+/i.test(effectiveInstructions);
+        if (!hasExpandDirective) {
+          // Prepend the target word count directive to existing instructions
+          const expandPrefix = `EXPAND TO ${parsedTargetWordCount} WORDS. `;
+          effectiveInstructions = expandPrefix + effectiveInstructions;
+          console.log(`[TARGET WORD COUNT] UI specified ${parsedTargetWordCount} words → injecting EXPAND directive`);
+        }
+      }
+      
+      if (hasText && !hasInstructions && !hasTargetWordCount) {
+        // User provided text but no instructions AND no target word count → AUTO-EXPAND
         if (inputWordCount < 1000) {
           // Small input → expand to 5000 words
           effectiveInstructions = "EXPAND TO 5000 WORDS. Write the maximally good, maximally coherent scholarly version of this text. Add real information, real arguments, real evidence. NO PUFFERY. NO HEDGING. NO FILLER. Every word must carry meaning.";

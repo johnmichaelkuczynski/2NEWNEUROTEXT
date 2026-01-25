@@ -1463,6 +1463,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           literalTruth: validatorLiteralTruth,
           llmProvider: validatorLLMProvider,
           instructionsOnly: isInstructionsOnly,  // Signal instructions-only mode
+          targetWordCount: validatorTargetWordCount,  // Pass UI target word count
         }),
       });
 
@@ -1992,6 +1993,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
               llmProvider: validatorLLMProvider,
               customInstructions: effectiveInstructions || undefined,  // Use interpreted instructions
               instructionsOnly: isInstructionsOnly,  // Signal instructions-only mode
+              targetWordCount: validatorTargetWordCount,  // Pass UI target word count
             }),
           });
 
