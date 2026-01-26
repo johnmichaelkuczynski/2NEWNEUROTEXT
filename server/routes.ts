@@ -3085,6 +3085,16 @@ Structural understanding is always understanding of relationships. Observational
             console.log(`[Universal Expansion] Mode: Universal Expansion, Aggressiveness: ${aggressiveness}`);
             console.log(`[Universal Expansion] Sections: ${result.sectionsGenerated}, Time: ${Math.round(result.processingTimeMs / 1000)}s`);
             
+            // DEDUCT CREDITS based on output word count (approximate tokens)
+            if (user?.id && hasCredits) {
+              const tokensGenerated = result.outputWordCount * 1.3; // ~1.3 tokens per word
+              const provider = llmProvider || 'anthropic';
+              const creditResult = await checkAndDeductCredits(user.id, user.username, provider, Math.ceil(tokensGenerated));
+              if (creditResult.creditsDeducted) {
+                console.log(`[CREDITS] Deducted ${creditResult.creditsDeducted} credits for universal expansion (${result.outputWordCount} words)`);
+              }
+            }
+            
             return res.json({
               success: true,
               output: result.expandedText,
@@ -3117,6 +3127,17 @@ Structural understanding is always understanding of relationships. Observational
                 success: false,
                 message: result.error || 'Position list processing failed'
               });
+            }
+            
+            // DEDUCT CREDITS based on output word count
+            if (user?.id && hasCredits) {
+              const outputWords = result.output?.split(/\s+/).length || 0;
+              const tokensGenerated = outputWords * 1.3;
+              const provider = llmProvider || 'anthropic';
+              const creditResult = await checkAndDeductCredits(user.id, user.username, provider, Math.ceil(tokensGenerated));
+              if (creditResult.creditsDeducted) {
+                console.log(`[CREDITS] Deducted ${creditResult.creditsDeducted} credits for position-list (${outputWords} words)`);
+              }
             }
             
             return res.json({
@@ -3165,6 +3186,16 @@ Structural understanding is always understanding of relationships. Observational
             console.log(`[Outline-First] Sections: ${result.processingStats.sectionsProcessed}, Time: ${Math.round(result.processingStats.timeMs / 1000)}s`);
             console.log(`[Outline-First] Outline thesis: ${result.outline.thesis}`);
             
+            // DEDUCT CREDITS based on output word count
+            if (user?.id && hasCredits) {
+              const tokensGenerated = result.processingStats.outputWords * 1.3;
+              const provider = llmProvider || 'anthropic';
+              const creditResult = await checkAndDeductCredits(user.id, user.username, provider, Math.ceil(tokensGenerated));
+              if (creditResult.creditsDeducted) {
+                console.log(`[CREDITS] Deducted ${creditResult.creditsDeducted} credits for outline-first (${result.processingStats.outputWords} words)`);
+              }
+            }
+            
             return res.json({
               success: true,
               output: result.reconstructedText,
@@ -3203,6 +3234,17 @@ Structural understanding is always understanding of relationships. Observational
             // Log diagnostics to console only - output is clean essay text
             console.log(`[Cross-Chunk] Complete: ${result.chunksProcessed || 0} chunks processed`);
             console.log(`[Cross-Chunk] Mode: Cross-Chunk, Document length: ${inputWordCount} words`);
+            
+            // DEDUCT CREDITS based on output word count
+            if (user?.id && hasCredits) {
+              const outputWords = result.reconstructedText?.split(/\s+/).length || inputWordCount;
+              const tokensGenerated = outputWords * 1.3;
+              const provider = llmProvider || 'anthropic';
+              const creditResult = await checkAndDeductCredits(user.id, user.username, provider, Math.ceil(tokensGenerated));
+              if (creditResult.creditsDeducted) {
+                console.log(`[CREDITS] Deducted ${creditResult.creditsDeducted} credits for cross-chunk (${outputWords} words)`);
+              }
+            }
             
             return res.json({
               success: true,
