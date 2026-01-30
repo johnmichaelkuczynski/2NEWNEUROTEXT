@@ -65,6 +65,48 @@ export function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
+  // Auto-login for Replit development environment
+  const DEV_AUTO_LOGIN_EMAIL = "johnmichaelkuczynski@gmail.com";
+  const isReplitDev = !!process.env.REPLIT_DEPLOYMENT && process.env.REPLIT_DEPLOYMENT !== "1";
+  
+  if (!isProduction || isReplitDev) {
+    app.use(async (req, res, next) => {
+      // Skip if already authenticated or if it's an auth endpoint
+      if (req.isAuthenticated() || req.path.startsWith('/auth/') || req.path === '/api/logout') {
+        return next();
+      }
+      
+      try {
+        // Find or create the dev user
+        let user = await storage.getUserByEmail(DEV_AUTO_LOGIN_EMAIL);
+        
+        if (!user) {
+          // Create the user if they don't exist
+          user = await storage.createGoogleUser(
+            'dev-auto-' + Date.now(),
+            DEV_AUTO_LOGIN_EMAIL,
+            'John Michael Kuczynski'
+          );
+          console.log("[Auth] Created dev auto-login user:", DEV_AUTO_LOGIN_EMAIL);
+        }
+        
+        // Auto-login
+        req.login(user, (err) => {
+          if (err) {
+            console.error("[Auth] Auto-login failed:", err);
+            return next();
+          }
+          console.log("[Auth] Auto-logged in as:", DEV_AUTO_LOGIN_EMAIL);
+          next();
+        });
+      } catch (error) {
+        console.error("[Auth] Auto-login error:", error);
+        next();
+      }
+    });
+    console.log("[Auth] Development auto-login enabled for:", DEV_AUTO_LOGIN_EMAIL);
+  }
+
   passport.use(
     new LocalStrategy(async (username, password, done) => {
       try {
