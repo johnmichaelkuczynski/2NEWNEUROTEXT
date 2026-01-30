@@ -26,7 +26,7 @@ import {
   getPartialOutput,
   type ProcessingProgress 
 } from "./services/dbEnforcedReconstruction";
-import { checkAndDeductCredits, hasUnlimitedCredits, getUserWordLimit, FREEMIUM_WORD_LIMIT } from "./services/creditManager";
+import { checkAndDeductCredits, hasUnlimitedCredits, getUserWordLimit, FREEMIUM_WORD_LIMIT, FREEMIUM_LIMITS, truncateToWordLimit } from "./services/creditManager";
 
 
 // Configure multer for file uploads
@@ -1555,7 +1555,27 @@ ${externalKnowledge}`;
         content = grokData.choices?.[0]?.message?.content || "No response";
       }
 
-      return res.json({ content });
+      // FREEMIUM CHECK - Apply chat limit for users without credits
+      const user = req.user as any;
+      const { hasCredits } = await getUserWordLimit(user?.id, user?.username);
+      
+      let finalContent = content;
+      let wasTruncated = false;
+      
+      if (!hasCredits) {
+        const truncateResult = truncateToWordLimit(content, FREEMIUM_LIMITS.chat);
+        finalContent = truncateResult.text;
+        wasTruncated = truncateResult.wasTruncated;
+        if (wasTruncated) {
+          console.log(`[FREEMIUM] Chat response truncated from ${truncateResult.originalWords} to ${FREEMIUM_LIMITS.chat} words`);
+        }
+      } else if (user?.id) {
+        // Deduct credits for paid users
+        const tokensGenerated = Math.round(content.split(/\s+/).length * 1.3);
+        await checkAndDeductCredits(user.id, user.username, actualProvider, tokensGenerated);
+      }
+
+      return res.json({ content: finalContent, wasTruncated, freemiumLimit: !hasCredits ? FREEMIUM_LIMITS.chat : null });
       
     } catch (error: any) {
       console.error("Error in chat with memory:", error);
@@ -4865,6 +4885,22 @@ Provide the refined text only. No commentary or explanation.`;
       }
 
       console.log(`Coherence Meter - Mode: ${mode}, Type: ${coherenceType || 'default'}, Aggressiveness: ${aggressiveness}, Text length: ${text.length}`);
+      
+      // FREEMIUM CHECK for coherence
+      const user = req.user as any;
+      const { hasCredits } = await getUserWordLimit(user?.id, user?.username);
+      
+      // Helper to apply coherence freemium limit
+      const applyCoherenceLimit = (text: string) => {
+        if (!hasCredits) {
+          const truncateResult = truncateToWordLimit(text, FREEMIUM_LIMITS.coherence);
+          if (truncateResult.wasTruncated) {
+            console.log(`[FREEMIUM] Coherence output truncated from ${truncateResult.originalWords} to ${FREEMIUM_LIMITS.coherence} words`);
+          }
+          return { text: truncateResult.text, wasTruncated: truncateResult.wasTruncated };
+        }
+        return { text, wasTruncated: false };
+      };
 
       const { 
         analyzeCoherence, 
@@ -4909,42 +4945,51 @@ Provide the refined text only. No commentary or explanation.`;
       // MATH MAX COHERENCE - improve structural coherence only, preserve theorem
       else if (mode === "math-max-coherence") {
         const result = await rewriteMathMaxCoherence(text, aggressiveness as "conservative" | "moderate" | "aggressive");
+        const limited = applyCoherenceLimit(result.rewrittenProof);
         
         res.json({
           success: true,
           isMathMaxCoherence: true,
-          rewrite: result.rewrittenProof,
+          rewrite: limited.text,
           changes: result.changes,
-          coherenceScore: result.coherenceScore
+          coherenceScore: result.coherenceScore,
+          wasTruncated: limited.wasTruncated,
+          freemiumLimit: !hasCredits ? FREEMIUM_LIMITS.coherence : null
         });
       }
       // MATH MAXIMIZE TRUTH - correct proofs or find adjacent truths
       else if (mode === "math-maximize-truth") {
         const result = await rewriteMathMaximizeTruth(text);
+        const limited = applyCoherenceLimit(result.correctedProof);
         
         res.json({
           success: true,
           isMathMaximizeTruth: true,
-          correctedProof: result.correctedProof,
+          correctedProof: limited.text,
           theoremStatus: result.theoremStatus,
           originalTheorem: result.originalTheorem,
           correctedTheorem: result.correctedTheorem,
           proofStrategy: result.proofStrategy,
           keyCorrections: result.keyCorrections,
-          validityScore: result.validityScore
+          validityScore: result.validityScore,
+          wasTruncated: limited.wasTruncated,
+          freemiumLimit: !hasCredits ? FREEMIUM_LIMITS.coherence : null
         });
       }
       // RECONSTRUCT TO MAX COHERENCE - adds thematically-adjacent material if needed
       else if (mode === "reconstruct") {
         const result = await reconstructToMaxCoherence(text, coherenceType);
+        const limited = applyCoherenceLimit(result.reconstructedText);
         
         res.json({
           success: true,
           isReconstruction: true,
-          rewrite: result.reconstructedText,
+          rewrite: limited.text,
           changes: result.changes,
           wasReconstructed: result.wasReconstructed,
           adjacentMaterialAdded: result.adjacentMaterialAdded,
+          wasTruncated: limited.wasTruncated,
+          freemiumLimit: !hasCredits ? FREEMIUM_LIMITS.coherence : null,
           originalLimitationsIdentified: result.originalLimitationsIdentified
         });
       }
@@ -5074,28 +5119,40 @@ Respond with ONLY the coherence type (e.g., "logical-consistency" or "scientific
         // Use specialized scientific rewrite for scientific-explanatory coherence type
         if (appliedCoherenceType === "scientific-explanatory") {
           const result = await rewriteScientificExplanatory(text, aggressiveness as "conservative" | "moderate" | "aggressive");
+          const limited = applyCoherenceLimit(result.rewrittenText);
           
           res.json({
             success: true,
-            rewrite: result.rewrittenText,
+            rewrite: limited.text,
             changes: result.changes,
             correctionsApplied: result.correctionsApplied,
             scientificAccuracyScore: result.scientificAccuracyScore,
             isScientificExplanatory: true,
             detectedCoherenceType: coherenceType === "auto-detect" ? appliedCoherenceType : undefined,
-            wasAutoDetected: coherenceType === "auto-detect"
+            wasAutoDetected: coherenceType === "auto-detect",
+            wasTruncated: limited.wasTruncated,
+            freemiumLimit: !hasCredits ? FREEMIUM_LIMITS.coherence : null
           });
         } else {
           const result = await rewriteForCoherence(text, aggressiveness as "conservative" | "moderate" | "aggressive");
+          const limited = applyCoherenceLimit(result.rewrittenText);
           
           res.json({
             success: true,
-            rewrite: result.rewrittenText,
+            rewrite: limited.text,
             changes: result.changes,
             detectedCoherenceType: coherenceType === "auto-detect" ? appliedCoherenceType : undefined,
-            wasAutoDetected: coherenceType === "auto-detect"
+            wasAutoDetected: coherenceType === "auto-detect",
+            wasTruncated: limited.wasTruncated,
+            freemiumLimit: !hasCredits ? FREEMIUM_LIMITS.coherence : null
           });
         }
+      }
+      
+      // Deduct credits for paid users after coherence operations
+      if (hasCredits && user?.id) {
+        const tokensGenerated = Math.round(text.split(/\s+/).length * 1.3);
+        await checkAndDeductCredits(user.id, user.username, 'anthropic', tokensGenerated);
       }
     } catch (error: any) {
       console.error("Coherence Meter error:", error);
@@ -6019,7 +6076,28 @@ Output a well-structured outline that can guide document generation.`;
       
       console.log("[Outline Generator] Outline generated successfully");
       
-      res.json({ success: true, output });
+      // FREEMIUM CHECK - Apply outline limit for users without credits
+      const user = req.user as any;
+      const { hasCredits } = await getUserWordLimit(user?.id, user?.username);
+      
+      let finalOutput = output;
+      let wasTruncated = false;
+      
+      if (!hasCredits) {
+        const truncateResult = truncateToWordLimit(output, FREEMIUM_LIMITS.outline);
+        finalOutput = truncateResult.text;
+        wasTruncated = truncateResult.wasTruncated;
+        if (wasTruncated) {
+          console.log(`[FREEMIUM] Outline truncated from ${truncateResult.originalWords} to ${FREEMIUM_LIMITS.outline} words`);
+        }
+      } else if (user?.id) {
+        // Deduct credits for paid users
+        const tokensGenerated = Math.round(output.split(/\s+/).length * 1.3);
+        const providerCredits = provider === 'anthropic' ? 'anthropic' : provider === 'deepseek' ? 'deepseek' : 'openai';
+        await checkAndDeductCredits(user.id, user.username, providerCredits, tokensGenerated);
+      }
+      
+      res.json({ success: true, output: finalOutput, wasTruncated, freemiumLimit: !hasCredits ? FREEMIUM_LIMITS.outline : null });
       
     } catch (error: any) {
       console.error("[Outline Generator] Error:", error);
@@ -6138,7 +6216,28 @@ Write a complete, well-structured document. Ensure:
       
       console.log("[Document Generator] Document generated successfully");
       
-      res.json({ success: true, output });
+      // FREEMIUM CHECK - Apply document limit for users without credits
+      const user = req.user as any;
+      const { hasCredits } = await getUserWordLimit(user?.id, user?.username);
+      
+      let finalOutput = output;
+      let wasTruncated = false;
+      
+      if (!hasCredits) {
+        const truncateResult = truncateToWordLimit(output, FREEMIUM_LIMITS.document);
+        finalOutput = truncateResult.text;
+        wasTruncated = truncateResult.wasTruncated;
+        if (wasTruncated) {
+          console.log(`[FREEMIUM] Document truncated from ${truncateResult.originalWords} to ${FREEMIUM_LIMITS.document} words`);
+        }
+      } else if (user?.id) {
+        // Deduct credits for paid users
+        const tokensGenerated = Math.round(output.split(/\s+/).length * 1.3);
+        const providerCredits = provider === 'anthropic' ? 'anthropic' : provider === 'deepseek' ? 'deepseek' : 'openai';
+        await checkAndDeductCredits(user.id, user.username, providerCredits, tokensGenerated);
+      }
+      
+      res.json({ success: true, output: finalOutput, wasTruncated, freemiumLimit: !hasCredits ? FREEMIUM_LIMITS.document : null });
       
     } catch (error: any) {
       console.error("[Document Generator] Error:", error);
@@ -6158,6 +6257,10 @@ Write a complete, well-structured document. Ensure:
         });
       }
 
+      // FREEMIUM CHECK
+      const user = req.user as any;
+      const { hasCredits } = await getUserWordLimit(user?.id, user?.username);
+      
       const wordCount = text.trim().split(/\s+/).length;
       
       // Validate and sanitize target word count
@@ -6169,17 +6272,38 @@ Write a complete, well-structured document. Ensure:
         }
       }
       
-      console.log(`[Screenplay Generator] Starting - Source: ${wordCount} words, Target: ${validatedTargetWords} words`);
+      console.log(`[Screenplay Generator] Starting - Source: ${wordCount} words, Target: ${validatedTargetWords} words, HasCredits: ${hasCredits}`);
 
       const { generateScreenplay } = await import('./services/screenplayGenerator');
       const result = await generateScreenplay(text, validatedTargetWords, customInstructions);
 
+      // Apply freemium limit for users without credits
+      let finalScreenplay = result.screenplay;
+      let finalWordCount = result.wordCount;
+      let wasTruncated = false;
+      
+      if (!hasCredits) {
+        const truncateResult = truncateToWordLimit(result.screenplay, FREEMIUM_LIMITS.screenplay);
+        finalScreenplay = truncateResult.text;
+        wasTruncated = truncateResult.wasTruncated;
+        finalWordCount = truncateResult.wasTruncated ? FREEMIUM_LIMITS.screenplay : result.wordCount;
+        if (wasTruncated) {
+          console.log(`[FREEMIUM] Screenplay truncated from ${result.wordCount} to ${FREEMIUM_LIMITS.screenplay} words`);
+        }
+      } else if (user?.id) {
+        // Deduct credits for paid users
+        const tokensGenerated = Math.round(result.wordCount * 1.3);
+        await checkAndDeductCredits(user.id, user.username, 'anthropic', tokensGenerated);
+      }
+
       res.json({
         success: true,
-        screenplay: result.screenplay,
-        wordCount: result.wordCount,
+        screenplay: finalScreenplay,
+        wordCount: finalWordCount,
         structure: result.structure,
-        processingTimeMs: result.processingTimeMs
+        processingTimeMs: result.processingTimeMs,
+        wasTruncated,
+        freemiumLimit: !hasCredits ? FREEMIUM_LIMITS.screenplay : null
       });
 
     } catch (error: any) {

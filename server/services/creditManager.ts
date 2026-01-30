@@ -91,8 +91,31 @@ export function getMultiplier(provider: string): number {
 }
 
 // Check if user has credits without deducting - returns word limit
-// Users with credits: unlimited words, Users without: 500 word limit
-export const FREEMIUM_WORD_LIMIT = 500;
+// Users with credits: unlimited words, Users without: specific limits per function
+export const FREEMIUM_WORD_LIMIT = 500; // Main reconstruction
+export const FREEMIUM_LIMITS = {
+  reconstruction: 500,
+  screenplay: 750,
+  chat: 750,
+  document: 750,
+  outline: 750,
+  coherence: 300,
+};
+
+// Helper to truncate text to word limit
+export function truncateToWordLimit(text: string, maxWords: number): { text: string; wasTruncated: boolean; originalWords: number } {
+  const words = text.trim().split(/\s+/);
+  const originalWords = words.length;
+  if (words.length <= maxWords) {
+    return { text, wasTruncated: false, originalWords };
+  }
+  const truncated = words.slice(0, maxWords).join(' ');
+  return { 
+    text: truncated + '\n\n[OUTPUT TRUNCATED - Purchase credits to unlock full content]', 
+    wasTruncated: true, 
+    originalWords 
+  };
+}
 
 export async function getUserWordLimit(
   userId: number | undefined,
