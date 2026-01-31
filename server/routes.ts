@@ -6257,7 +6257,7 @@ Write a complete, well-structured document. Ensure:
         });
       }
 
-      // FREEMIUM CHECK
+      // FREEMIUM CHECK - Check credits BEFORE generating
       const user = req.user as any;
       const { hasCredits } = await getUserWordLimit(user?.id, user?.username);
       
@@ -6272,25 +6272,29 @@ Write a complete, well-structured document. Ensure:
         }
       }
       
+      // FREEMIUM: Limit generation target for users without credits
+      if (!hasCredits) {
+        validatedTargetWords = Math.min(validatedTargetWords, FREEMIUM_LIMITS.screenplay);
+        console.log(`[FREEMIUM] User has no credits - limiting screenplay to ${FREEMIUM_LIMITS.screenplay} words`);
+      }
+      
       console.log(`[Screenplay Generator] Starting - Source: ${wordCount} words, Target: ${validatedTargetWords} words, HasCredits: ${hasCredits}`);
 
       const { generateScreenplay } = await import('./services/screenplayGenerator');
       const result = await generateScreenplay(text, validatedTargetWords, customInstructions);
 
-      // Apply freemium limit for users without credits
+      // Additional truncation safety for freemium users
       let finalScreenplay = result.screenplay;
       let finalWordCount = result.wordCount;
       let wasTruncated = false;
       
-      if (!hasCredits) {
+      if (!hasCredits && result.wordCount > FREEMIUM_LIMITS.screenplay) {
         const truncateResult = truncateToWordLimit(result.screenplay, FREEMIUM_LIMITS.screenplay);
         finalScreenplay = truncateResult.text;
-        wasTruncated = truncateResult.wasTruncated;
-        finalWordCount = truncateResult.wasTruncated ? FREEMIUM_LIMITS.screenplay : result.wordCount;
-        if (wasTruncated) {
-          console.log(`[FREEMIUM] Screenplay truncated from ${result.wordCount} to ${FREEMIUM_LIMITS.screenplay} words`);
-        }
-      } else if (user?.id) {
+        wasTruncated = true;
+        finalWordCount = FREEMIUM_LIMITS.screenplay;
+        console.log(`[FREEMIUM] Screenplay safety-truncated from ${result.wordCount} to ${FREEMIUM_LIMITS.screenplay} words`);
+      } else if (hasCredits && user?.id) {
         // Deduct credits for paid users
         const tokensGenerated = Math.round(result.wordCount * 1.3);
         await checkAndDeductCredits(user.id, user.username, 'anthropic', tokensGenerated);
