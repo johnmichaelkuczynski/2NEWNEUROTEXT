@@ -64,6 +64,8 @@ interface ParsedInstructions {
   internalSubsections: boolean;
   literatureReview: boolean;
   philosophersToReference: string[];
+  dialogueFormat: boolean;
+  dialogueCharacters: string[];
 }
 
 const anthropic = new Anthropic();
@@ -102,7 +104,9 @@ export function parseExpansionInstructions(customInstructions: string): ParsedIn
     noBulletPoints: false,
     internalSubsections: false,
     literatureReview: false,
-    philosophersToReference: []
+    philosophersToReference: [],
+    dialogueFormat: false,
+    dialogueCharacters: []
   };
   
   if (!customInstructions) {
@@ -322,6 +326,19 @@ export function parseExpansionInstructions(customInstructions: string): ParsedIn
   result.internalSubsections = /INTERNAL\s*SUBSECTIONS?|EACH\s*CHAPTER\s*(?:MUST\s*)?HAVE\s*(?:INTERNAL\s*)?SUBSECTIONS?/i.test(text);
   result.literatureReview = /LITERATURE\s*REVIEW/i.test(text);
   
+  // DIALOGUE FORMAT DETECTION - Critical for producing actual dialogue, not essays about dialogue
+  result.dialogueFormat = /\bDIALOGUE\b|\bCONVERSATION\b|\bDISCUSSION\s+BETWEEN\b|\bDEBATE\s+BETWEEN\b/i.test(text);
+  
+  // Extract dialogue characters from patterns like "DIALOGUE BETWEEN X AND Y" or "CONVERSATION BETWEEN X AND Y"
+  const dialogueCharMatch = originalText.match(/(?:DIALOGUE|CONVERSATION|DISCUSSION|DEBATE)\s+BETWEEN\s+([^.]+?)(?:ON|ABOUT|REGARDING|CONCERNING|$)/i);
+  if (dialogueCharMatch) {
+    result.dialogueFormat = true;
+    const charactersStr = dialogueCharMatch[1].trim();
+    // Split by "AND" to get character names
+    result.dialogueCharacters = charactersStr.split(/\s+AND\s+/i).map(c => c.trim()).filter(c => c.length > 0);
+    console.log(`[Universal Expansion] Detected DIALOGUE format with characters: ${result.dialogueCharacters.join(', ')}`);
+  }
+  
   // Extract other constraints as strings
   const constraintPatterns = [
     /MAINTAIN\s+[^.]+/gi,
@@ -424,7 +441,53 @@ async function generateSection(
     let prompt: string;
     
     if (isFirstChunk) {
-      prompt = `You are writing a section of an academic thesis/dissertation.
+      // Use DIALOGUE-SPECIFIC prompt if dialogue format is detected
+      if (parsedInstructions.dialogueFormat) {
+        const characters = parsedInstructions.dialogueCharacters.length > 0 
+          ? parsedInstructions.dialogueCharacters.join(' and ')
+          : 'the characters specified';
+        
+        prompt = `You are writing a DIALOGUE - an actual conversation with back-and-forth exchanges.
+
+TOPIC/THEME (what the dialogue is about):
+${originalText}
+
+CHARACTERS: ${characters}
+
+DOCUMENT OUTLINE:
+${fullOutline}
+
+PREVIOUS SECTIONS:
+${previousSections || '[This is the beginning]'}
+
+═══════════════════════════════════════════════════════════════
+SECTION: ${sectionName}
+TARGET LENGTH: ${targetWordCount} words
+THIS CHUNK: Write approximately ${wordsToRequest} words
+═══════════════════════════════════════════════════════════════
+
+USER'S INSTRUCTIONS:
+${customInstructions}
+
+CRITICAL DIALOGUE FORMAT REQUIREMENTS:
+1. Write ACTUAL DIALOGUE - real conversation between the characters
+2. Each speaker's turn starts on a new line with their name in CAPITALS followed by a colon
+3. Format: "CHARACTER NAME: [What they say]"
+4. Characters should ENGAGE with each other - respond to, challenge, and build on what the other says
+5. Include substantive philosophical/intellectual exchanges - not surface-level chat
+6. Characters should speak in their authentic voices with their distinct perspectives
+7. Do NOT write an essay ABOUT a dialogue - write the DIALOGUE ITSELF
+8. Do NOT include stage directions, narrative descriptions, or prose paragraphs between dialogue
+9. Aim for ${wordsToRequest} words of actual dialogue exchanges
+
+EXAMPLE FORMAT:
+FREUD: The unconscious mind harbors desires that society forces us to repress...
+CONFUCIUS: Yet is not self-cultivation precisely the mastery of such impulses for the greater harmony of society?
+FREUD: You speak of harmony, but at what psychological cost?
+
+Write the DIALOGUE now (${wordsToRequest} words of conversation):`;
+      } else {
+        prompt = `You are writing a section of an academic thesis/dissertation.
 
 ORIGINAL SOURCE TEXT (the seed idea to expand):
 ${originalText}
@@ -461,10 +524,44 @@ CRITICAL REQUIREMENTS:
 9. End at a natural paragraph break, ready for continuation
 
 Write the BEGINNING of this section (${wordsToRequest} words):`;
+      }
     } else {
       // Continuation prompt
       const lastParagraphs = accumulatedContent.split('\n\n').slice(-3).join('\n\n');
-      prompt = `You are CONTINUING to write a section of an academic thesis/dissertation.
+      
+      if (parsedInstructions.dialogueFormat) {
+        const characters = parsedInstructions.dialogueCharacters.length > 0 
+          ? parsedInstructions.dialogueCharacters.join(' and ')
+          : 'the characters';
+        
+        prompt = `You are CONTINUING a dialogue between ${characters}.
+
+SECTION: ${sectionName}
+WORDS WRITTEN SO FAR: ${currentWordCount}
+WORDS STILL NEEDED: ${wordsRemaining}
+TARGET TOTAL: ${targetWordCount} words
+
+LAST PART OF THE DIALOGUE (continue from here):
+"""
+${lastParagraphs}
+"""
+
+USER'S ORIGINAL INSTRUCTIONS:
+${customInstructions}
+
+CRITICAL DIALOGUE REQUIREMENTS:
+1. Write approximately ${wordsToRequest} MORE words of DIALOGUE
+2. Continue the conversation naturally from where it left off
+3. Keep the same format: CHARACTER NAME: [What they say]
+4. Characters should respond to and engage with each other's points
+5. Do NOT repeat lines already spoken
+6. Do NOT add prose, stage directions, or narrative descriptions
+7. Maintain each character's authentic voice and perspective
+${wordsRemaining > 4000 ? '8. DO NOT end the conversation yet - more dialogue will follow' : '8. You may bring the dialogue to a natural conclusion if appropriate'}
+
+Continue the DIALOGUE now (${wordsToRequest} more words):`;
+      } else {
+        prompt = `You are CONTINUING to write a section of an academic thesis/dissertation.
 
 SECTION: ${sectionName}
 WORDS WRITTEN SO FAR: ${currentWordCount}
@@ -490,6 +587,7 @@ CRITICAL REQUIREMENTS:
 ${wordsRemaining > 4000 ? '8. DO NOT conclude yet - more content will follow' : '8. You may write a concluding paragraph if appropriate'}
 
 Continue writing NOW (${wordsToRequest} more words):`;
+      }
     }
 
     console.log(`[Section ${sectionName}] Attempt ${continuationAttempts + 1}: Requesting ${wordsToRequest} words (have ${currentWordCount}/${targetWordCount})`);
