@@ -9396,59 +9396,59 @@ Generated on: ${new Date().toLocaleString()}`;
                 {dwUploadedDocuments.map((doc, index) => (
                   <div 
                     key={doc.id}
-                    className={`flex items-center gap-3 p-3 rounded-md border transition-all cursor-pointer ${
+                    className={`rounded-md border transition-all ${
                       dwSelectedDocumentIds.has(doc.id)
                         ? doc.role === 'primary'
                           ? "bg-emerald-100 dark:bg-emerald-800/40 border-emerald-400 dark:border-emerald-500"
                           : "bg-blue-100 dark:bg-blue-800/40 border-blue-400 dark:border-blue-500"
-                        : "bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-700 hover:border-blue-300"
+                        : "bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-700"
                     }`}
-                    onClick={() => toggleDwDocumentSelection(doc.id)}
                     data-testid={`dw-doc-item-${doc.id}`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={dwSelectedDocumentIds.has(doc.id)}
-                      onChange={() => toggleDwDocumentSelection(doc.id)}
-                      className="w-4 h-4 accent-blue-600"
-                      onClick={(e) => e.stopPropagation()}
-                      data-testid={`dw-checkbox-doc-${doc.id}`}
-                    />
-                    <span className="text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-200 dark:bg-blue-700 px-2 py-0.5 rounded">
-                      {index + 1}
-                    </span>
-                    <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                    <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate" title={doc.filename}>
-                      {doc.filename}
-                    </span>
-                    <Badge variant="outline" className="text-xs flex-shrink-0">
-                      {doc.wordCount.toLocaleString()} words
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleDwDocumentRole(doc.id);
-                      }}
-                      className={`text-xs px-2 flex-shrink-0 font-bold ${
-                        doc.role === 'primary'
-                          ? "text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-800/40 border border-emerald-300 dark:border-emerald-600"
-                          : "text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-800/40 border border-blue-300 dark:border-blue-600"
-                      }`}
-                      data-testid={`button-role-dw-doc-${doc.id}`}
-                    >
-                      {doc.role === 'primary' ? 'PRIMARY TEXT' : 'SOURCE MATERIAL'}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => { e.stopPropagation(); handleDwRemoveDocument(doc.id); }}
-                      className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0"
-                      data-testid={`button-remove-dw-doc-${doc.id}`}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-3 p-3 cursor-pointer" onClick={() => toggleDwDocumentSelection(doc.id)}>
+                      <input
+                        type="checkbox"
+                        checked={dwSelectedDocumentIds.has(doc.id)}
+                        onChange={() => toggleDwDocumentSelection(doc.id)}
+                        className="w-4 h-4 accent-blue-600"
+                        onClick={(e) => e.stopPropagation()}
+                        data-testid={`dw-checkbox-doc-${doc.id}`}
+                      />
+                      <span className="text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-200 dark:bg-blue-700 px-2 py-0.5 rounded">
+                        {index + 1}
+                      </span>
+                      <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                      <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate" title={doc.filename}>
+                        {doc.filename}
+                      </span>
+                      <Badge variant="outline" className="text-xs flex-shrink-0">
+                        {doc.wordCount.toLocaleString()} words
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => { e.stopPropagation(); handleDwRemoveDocument(doc.id); }}
+                        data-testid={`button-remove-dw-doc-${doc.id}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2 px-3 pb-3">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Role:</span>
+                      <Badge
+                        variant={doc.role === 'primary' ? 'default' : 'secondary'}
+                        className={`cursor-pointer text-xs ${
+                          doc.role === 'primary'
+                            ? "bg-emerald-600 text-white"
+                            : ""
+                        }`}
+                        onClick={() => toggleDwDocumentRole(doc.id)}
+                        data-testid={`badge-role-dw-doc-${doc.id}`}
+                      >
+                        {doc.role === 'primary' ? 'PRIMARY TEXT' : 'SOURCE MATERIAL'}
+                      </Badge>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">(click to change)</span>
+                    </div>
                   </div>
                 ))}
                 
