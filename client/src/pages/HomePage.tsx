@@ -9230,6 +9230,287 @@ Generated on: ${new Date().toLocaleString()}`;
         </div>
       </div>
 
+      {/* NEUROTEXT COPY - Reconstruction Tool (Bottom Copy) */}
+      <div id="neurotext-bottom" className="mt-16 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/10 dark:to-teal-900/10 p-8 rounded-lg border-2 border-emerald-200 dark:border-emerald-700">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-emerald-900 dark:text-emerald-100 mb-3 flex items-center justify-center gap-3">
+              <BookOpen className="w-8 h-8 text-emerald-600" />
+              NEUROTEXT
+            </h2>
+            <p className="text-lg text-gray-700 dark:text-gray-300 mb-2">
+              Intelligent text reconstruction - follows your instructions without limits
+            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Enter text to reconstruct, or just provide instructions to generate new content
+            </p>
+          </div>
+
+          {/* Input Area */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-semibold text-emerald-800 dark:text-emerald-200">
+                Input Text (up to 100,000 words)
+              </label>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  Word Count: {validatorInputText.trim() ? validatorInputText.trim().split(/\s+/).length.toLocaleString() : 0} / 100,000
+                </span>
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file, setValidatorInputText);
+                    }}
+                    data-testid="input-validator-upload-bottom"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      (e.currentTarget.previousElementSibling as HTMLInputElement)?.click();
+                    }}
+                    data-testid="button-validator-upload-bottom"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload Document
+                  </Button>
+                </label>
+              </div>
+            </div>
+            <Textarea
+              value={validatorInputText}
+              onChange={(e) => setValidatorInputText(e.target.value)}
+              placeholder="Paste complex, obscure, or muddled text here... or drag & drop a document (PDF, Word, TXT)"
+              className="min-h-[200px] font-mono text-sm"
+              data-testid="textarea-validator-input-bottom"
+            />
+            <TextStats text={validatorInputText} showAiDetect={true} />
+          </div>
+
+          {/* Target Word Count */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-violet-300 dark:border-violet-700 mt-6">
+            <label className="block text-sm font-semibold text-violet-700 dark:text-violet-300 mb-2">
+              Target Word Count (Required for expansion)
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                value={validatorTargetWordCount}
+                onChange={(e) => setValidatorTargetWordCount(e.target.value)}
+                placeholder="e.g., 5000, 25000, 100000"
+                className="flex-1 px-4 py-3 text-lg font-semibold border-2 border-violet-300 dark:border-violet-600 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500 dark:bg-gray-700 dark:text-white"
+                min="100"
+                max="300000"
+                data-testid="input-target-word-count-bottom"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">words</span>
+            </div>
+            <p className="text-xs text-violet-600 dark:text-violet-400 mt-2 font-medium">
+              Enter desired output length. Leave empty to auto-expand (small input → 5000 words, large input → 1.5x).
+            </p>
+          </div>
+
+          {/* Custom Instructions */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 mt-4">
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              Custom Instructions (Optional)
+            </label>
+            <Textarea
+              value={validatorCustomInstructions}
+              onChange={(e) => setValidatorCustomInstructions(e.target.value)}
+              placeholder="e.g., 'TURN INTO A PLAY' or 'WRITE AS A LEGAL DOCUMENT' or 'Focus on the logical structure'"
+              className="min-h-[100px] text-sm"
+              data-testid="textarea-validator-custom-instructions-bottom"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Provide specific guidance about format or content. The app will follow your instructions exactly.
+            </p>
+          </div>
+
+          {/* LLM Provider Selector */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 mt-4">
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              AI Model Selection
+            </label>
+            <Select value={validatorLLMProvider} onValueChange={setValidatorLLMProvider}>
+              <SelectTrigger data-testid="select-validator-llm-bottom" className="w-full">
+                <SelectValue placeholder="Select AI Model" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="zhi5">ZHI 5 - Default</SelectItem>
+                <SelectItem value="zhi1">ZHI 1</SelectItem>
+                <SelectItem value="zhi2">ZHI 2</SelectItem>
+                <SelectItem value="zhi3">ZHI 3</SelectItem>
+                <SelectItem value="zhi4">ZHI 4</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-900 rounded-md border border-gray-200 dark:border-gray-600 text-xs">
+              <div className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Model Guide (cost per token)</div>
+              <div className="space-y-1 text-gray-600 dark:text-gray-400">
+                <div className="flex justify-between"><span><b>ZHI 1</b> — General purpose, follows instructions best</span><span className="text-amber-600 font-medium">5x</span></div>
+                <div className="flex justify-between"><span><b>ZHI 2</b> — Complex writing, long documents</span><span className="text-red-500 font-medium">7x</span></div>
+                <div className="flex justify-between"><span><b>ZHI 3</b> — Math & logic</span><span className="text-green-600 font-medium">1x</span></div>
+                <div className="flex justify-between"><span><b>ZHI 4</b> — Factual lookup with sources</span><span className="text-red-500 font-medium">7x</span></div>
+                <div className="flex justify-between"><span><b>ZHI 5</b> — Casual, current events</span><span className="text-yellow-600 font-medium">3x</span></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Reconstruction Button */}
+          <div className="mb-6 mt-6">
+            <Button
+              onClick={() => {
+                handleValidatorProcess("reconstruction");
+              }}
+              className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
+                validatorMode === "reconstruction" 
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
+                  : "bg-white dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-2 border-emerald-300"
+              }`}
+              disabled={validatorLoading || validatorBatchLoading}
+              data-testid="button-reconstruction-bottom"
+            >
+              {validatorLoading ? (
+                <>
+                  <Loader2 className="w-6 h-6 mb-2 animate-spin" />
+                  <span className="font-bold text-lg">PROCESSING...</span>
+                  <span className="text-xs mt-1 text-center opacity-80">
+                    {validatorProgress || "Reconstructing text..."}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-6 h-6 mb-2" />
+                  <span className="font-bold text-lg">RECONSTRUCTION</span>
+                  <span className="text-xs mt-1 text-center opacity-80">Clean up logic</span>
+                </>
+              )}
+            </Button>
+            
+            {validatorLoading && validatorProgress && (
+              <div className="mt-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-700">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                  <span className="text-sm text-emerald-700 dark:text-emerald-300">{validatorProgress}</span>
+                </div>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+                  Long documents use outline-first mode for better coherence. This may take 1-3 minutes.
+                </p>
+              </div>
+            )}
+            
+            {/* Mode Toggle */}
+            <div className="flex items-center justify-center gap-4 mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700">
+              <span className="text-sm font-medium text-amber-800 dark:text-amber-200">Mode:</span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={validatorFidelityLevel === "conservative" ? "default" : "outline"}
+                  onClick={() => setValidatorFidelityLevel("conservative")}
+                  className={validatorFidelityLevel === "conservative" 
+                    ? "bg-amber-600 hover:bg-amber-700 text-white" 
+                    : "border-amber-300 text-amber-700 dark:text-amber-300"}
+                  data-testid="button-fidelity-conservative-bottom"
+                >
+                  Conservative
+                </Button>
+                <Button
+                  size="sm"
+                  variant={validatorFidelityLevel === "aggressive" ? "default" : "outline"}
+                  onClick={() => setValidatorFidelityLevel("aggressive")}
+                  className={validatorFidelityLevel === "aggressive" 
+                    ? "bg-red-600 hover:bg-red-700 text-white" 
+                    : "border-amber-300 text-amber-700 dark:text-amber-300"}
+                  data-testid="button-fidelity-aggressive-bottom"
+                >
+                  Aggressive
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Output Display */}
+          {validatorOutput && (
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-emerald-300 dark:border-emerald-700">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-emerald-600" />
+                  Reconstruction Result
+                </h3>
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownloadText(validatorOutput, `reconstruction-output.txt`)}
+                    data-testid="button-download-validator-output-bottom"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download
+                  </Button>
+                  <CopyButton text={validatorOutput} />
+                  <Button
+                    onClick={handleValidatorClear}
+                    variant="outline"
+                    size="sm"
+                    data-testid="button-clear-validator-bottom"
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Clear
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-700 rounded-lg p-3 mb-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-sky-700 dark:text-sky-300">Input Words:</span>
+                    <span className="text-lg font-bold text-sky-900 dark:text-sky-100">
+                      {validatorInputText.trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()}
+                    </span>
+                  </div>
+                  <span className="text-sky-400">|</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Output Words:</span>
+                    <span className="text-lg font-bold text-emerald-900 dark:text-emerald-100">
+                      {validatorOutput.trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <TextStats text={validatorOutput} showAiDetect={true} variant="prominent" targetWords={parseInt(validatorTargetWordCount) || undefined} />
+              
+              <Textarea
+                value={validatorOutput}
+                readOnly
+                className="min-h-[300px] font-mono text-sm mt-4"
+                data-testid="textarea-validator-output-bottom"
+              />
+            </div>
+          )}
+
+          {/* Clear All */}
+          <div className="mt-4 text-center">
+            <Button
+              onClick={handleValidatorClear}
+              variant="outline"
+              className="px-6 py-2 border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 dark:hover:bg-red-900/20 flex items-center mx-auto"
+              disabled={validatorLoading}
+              data-testid="button-validator-clear-all-bottom"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              <span>New Analysis / Clear All</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {/* Chat Dialog - Always visible below everything */}
       <ChatDialog 
         currentDocument={documentA.content}
