@@ -9230,13 +9230,13 @@ Generated on: ${new Date().toLocaleString()}`;
         </div>
       </div>
 
-      {/* NEUROTEXT COPY - Reconstruction Tool (Bottom Copy) */}
-      <div id="neurotext-bottom" className="mt-16 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/10 dark:to-teal-900/10 p-8 rounded-lg border-2 border-emerald-200 dark:border-emerald-700">
+      {/* DISSERTATION WIZARD - Bottom Copy of Reconstruction Tool */}
+      <div id="dissertation-wizard" className="mt-16 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/10 dark:to-teal-900/10 p-8 rounded-lg border-2 border-emerald-200 dark:border-emerald-700">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-emerald-900 dark:text-emerald-100 mb-3 flex items-center justify-center gap-3">
               <BookOpen className="w-8 h-8 text-emerald-600" />
-              NEUROTEXT
+              DISSERTATION WIZARD
             </h2>
             <p className="text-lg text-gray-700 dark:text-gray-300 mb-2">
               Intelligent text reconstruction - follows your instructions without limits
