@@ -1,0 +1,18 @@
+Two critical issues with the Dissertation Wizard function:
+
+1. THE APP IS NOT PULLING FROM USER UPLOADS
+
+When a user uploads source documents (in this case ~500 pages of original William James texts), the Dissertation Wizard is ignoring them almost entirely. Instead, it's generating output based overwhelmingly on whatever is mentioned in the instruction/prompt box. In this case, the user referenced Kuczynski's papers in the instructions — those papers weren't even uploaded — and the app just riffed on that single reference for the entire output. The uploaded James texts, which should have been the primary source material, are barely represented. The retrieval system is either not querying the uploaded documents at all, or the results are being drowned out by the instruction-box content.
+
+This needs to be diagnosed and fixed. The uploaded documents should be the primary content source. The instruction box should govern structure, argument, and framing — not substitute for the source material. If the retrieval pipeline is chunking and embedding the uploads, verify that those chunks are actually being pulled into the generation context. If the instruction-box text is being weighted equally or higher than retrieved chunks, that weighting is wrong.
+
+2. MASSIVE REDUNDANCY / NO REPETITION ENFORCEMENT
+
+The output repeats the same core point — sometimes nearly verbatim — across every chapter. The central thesis gets restated in essentially identical terms dozens of times. This is a direct consequence of issue #1 (when you only have one source idea, you repeat it), but it also needs its own fix.
+
+Implement a no-repetition policy: a given point should not be restated unless the restatement is in furtherance of generating a new point. Repetition for emphasis or transition is fine; repetition as filler because the app has nothing new to say is not. This likely requires either:
+- Cross-chunk awareness during generation (checking what's already been written before generating the next section)
+- A post-generation pass that flags and condenses redundant passages
+- Or both
+
+The combination of these two issues produces output that is coherent but hollow — logically consistent because it's just saying one thing over and over, rather than building a progressive argument from diverse source material. The app should be producing output where each chapter demonstrably draws on different uploaded sources and advances the argument rather than restating it.
