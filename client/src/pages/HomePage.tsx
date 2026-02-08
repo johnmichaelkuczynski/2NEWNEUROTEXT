@@ -179,7 +179,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
   const [libraryInstructions, setLibraryInstructions] = useState("");
   const [libraryDragOver, setLibraryDragOver] = useState(false);
-  const [dwUploadedDocuments, setDwUploadedDocuments] = useState<Array<{id: string; filename: string; content: string; wordCount: number}>>([]);
+  const [dwUploadedDocuments, setDwUploadedDocuments] = useState<Array<{id: string; filename: string; content: string; wordCount: number; role: 'primary' | 'source'}>>([]);
   const [dwSelectedDocumentIds, setDwSelectedDocumentIds] = useState<Set<string>>(new Set());
   const [dwLibraryInstructions, setDwLibraryInstructions] = useState("");
   const [dwLibraryDragOver, setDwLibraryDragOver] = useState(false);
@@ -881,7 +881,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       toast({ title: "Some Files Skipped", description: `Only ${filesToProcess.length} of ${files.length} files added (max 5 total)`, variant: "default" });
     }
     try {
-      const newDocs: Array<{id: string; filename: string; content: string; wordCount: number}> = [];
+      const newDocs: Array<{id: string; filename: string; content: string; wordCount: number; role: 'primary' | 'source'}> = [];
       const newIds: string[] = [];
       for (const file of filesToProcess) {
         const formData = new FormData();
@@ -892,7 +892,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         const words = data.content.trim().split(/\s+/).filter(Boolean);
         const docId = `dw-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         newIds.push(docId);
-        newDocs.push({ id: docId, filename: file.name, content: data.content, wordCount: words.length });
+        newDocs.push({ id: docId, filename: file.name, content: data.content, wordCount: words.length, role: 'source' });
       }
       const allDocs = [...dwUploadedDocuments, ...newDocs];
       setDwUploadedDocuments(allDocs);
@@ -906,6 +906,10 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
   const toggleDwDocumentSelection = (docId: string) => {
     setDwSelectedDocumentIds(prev => { const newSet = new Set(prev); if (newSet.has(docId)) { newSet.delete(docId); } else { newSet.add(docId); } return newSet; });
+  };
+
+  const toggleDwDocumentRole = (docId: string) => {
+    setDwUploadedDocuments(prev => prev.map(d => d.id === docId ? { ...d, role: d.role === 'primary' ? 'source' as const : 'primary' as const } : d));
   };
 
   const clearDwDocumentLibrary = () => {
@@ -9382,12 +9386,21 @@ Generated on: ${new Date().toLocaleString()}`;
                     {dwSelectedDocumentIds.size} selected ({dwUploadedDocuments.filter(d => dwSelectedDocumentIds.has(d.id)).reduce((s, d) => s + d.wordCount, 0).toLocaleString()} words)
                   </Badge>
                 </div>
+                <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-700">
+                  <p className="text-xs font-medium text-amber-800 dark:text-amber-200 mb-1">Assign a role to each document:</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    <span className="font-bold text-emerald-700 dark:text-emerald-400">PRIMARY TEXT</span> = the text to be rewritten/expanded. 
+                    <span className="font-bold text-blue-700 dark:text-blue-400">SOURCE MATERIAL</span> = reference documents used to inform the rewrite.
+                  </p>
+                </div>
                 {dwUploadedDocuments.map((doc, index) => (
                   <div 
                     key={doc.id}
                     className={`flex items-center gap-3 p-3 rounded-md border transition-all cursor-pointer ${
                       dwSelectedDocumentIds.has(doc.id)
-                        ? "bg-blue-100 dark:bg-blue-800/40 border-blue-400 dark:border-blue-500"
+                        ? doc.role === 'primary'
+                          ? "bg-emerald-100 dark:bg-emerald-800/40 border-emerald-400 dark:border-emerald-500"
+                          : "bg-blue-100 dark:bg-blue-800/40 border-blue-400 dark:border-blue-500"
                         : "bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-700 hover:border-blue-300"
                     }`}
                     onClick={() => toggleDwDocumentSelection(doc.id)}
@@ -9414,6 +9427,22 @@ Generated on: ${new Date().toLocaleString()}`;
                     <Button
                       variant="ghost"
                       size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleDwDocumentRole(doc.id);
+                      }}
+                      className={`text-xs px-2 flex-shrink-0 font-bold ${
+                        doc.role === 'primary'
+                          ? "text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-800/40 border border-emerald-300 dark:border-emerald-600"
+                          : "text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-800/40 border border-blue-300 dark:border-blue-600"
+                      }`}
+                      data-testid={`button-role-dw-doc-${doc.id}`}
+                    >
+                      {doc.role === 'primary' ? 'PRIMARY TEXT' : 'SOURCE MATERIAL'}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={(e) => { e.stopPropagation(); handleDwRemoveDocument(doc.id); }}
                       className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0"
                       data-testid={`button-remove-dw-doc-${doc.id}`}
@@ -9431,22 +9460,52 @@ Generated on: ${new Date().toLocaleString()}`;
                     <Textarea
                       value={dwLibraryInstructions}
                       onChange={(e) => setDwLibraryInstructions(e.target.value)}
-                      placeholder="e.g., COMBINE THESE INTO A SINGLE COHESIVE WORK&#10;or: EXTRACT THE KEY ARGUMENTS FROM EACH AND SYNTHESIZE&#10;or: COMPARE AND CONTRAST THE MAIN THEMES"
+                      placeholder="e.g., EXPAND INTO A 50,000 WORD DISSERTATION&#10;or: COMBINE THESE INTO A SINGLE COHESIVE WORK&#10;or: EXTRACT THE KEY ARGUMENTS FROM EACH AND SYNTHESIZE"
                       className="min-h-[80px] text-sm"
                       data-testid="textarea-dw-library-instructions"
                     />
                     <Button
                       onClick={() => {
                         const selectedDocs = dwUploadedDocuments.filter(d => dwSelectedDocumentIds.has(d.id));
-                        const combinedContent = combineDocuments(selectedDocs);
-                        setValidatorInputText(combinedContent);
-                        if (dwLibraryInstructions.trim()) {
-                          setValidatorCustomInstructions(dwLibraryInstructions);
+                        const primaryDocs = selectedDocs.filter(d => d.role === 'primary');
+                        const sourceDocs = selectedDocs.filter(d => d.role === 'source');
+                        
+                        let combinedPrimary = combineDocuments(primaryDocs);
+                        let combinedSource = combineDocuments(sourceDocs);
+                        
+                        if (primaryDocs.length > 0 && sourceDocs.length > 0) {
+                          setValidatorInputText(combinedPrimary);
+                          const sourceBlock = `[SOURCE MATERIAL - USE AS REFERENCE ONLY]\n${combinedSource}\n[END SOURCE MATERIAL]`;
+                          const existingInstructions = dwLibraryInstructions.trim();
+                          setValidatorCustomInstructions(
+                            existingInstructions
+                              ? `${existingInstructions}\n\n${sourceBlock}`
+                              : sourceBlock
+                          );
+                          toast({
+                            title: "Documents Loaded (Separated)",
+                            description: `${primaryDocs.length} primary text(s) loaded as input. ${sourceDocs.length} source document(s) loaded as reference material.`,
+                          });
+                        } else if (primaryDocs.length > 0) {
+                          setValidatorInputText(combinedPrimary);
+                          if (dwLibraryInstructions.trim()) {
+                            setValidatorCustomInstructions(dwLibraryInstructions);
+                          }
+                          toast({
+                            title: "Documents Loaded",
+                            description: `${primaryDocs.length} primary text(s) loaded. No source material assigned.`,
+                          });
+                        } else {
+                          const combined = combineDocuments(selectedDocs);
+                          setValidatorInputText(combined);
+                          if (dwLibraryInstructions.trim()) {
+                            setValidatorCustomInstructions(dwLibraryInstructions);
+                          }
+                          toast({
+                            title: "Documents Loaded as Source Material",
+                            description: `${selectedDocs.length} document(s) loaded. Tip: Mark one as PRIMARY TEXT if you want it rewritten.`,
+                          });
                         }
-                        toast({
-                          title: "Documents Loaded",
-                          description: `${selectedDocs.length} document${selectedDocs.length > 1 ? 's' : ''} loaded. ${dwLibraryInstructions ? 'Instructions applied.' : 'Add instructions below or run operations.'}`,
-                        });
                       }}
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                       data-testid="button-load-dw-selected"
@@ -9454,6 +9513,19 @@ Generated on: ${new Date().toLocaleString()}`;
                       <ArrowRight className="w-4 h-4 mr-2" />
                       Load {dwSelectedDocumentIds.size} Selected Document{dwSelectedDocumentIds.size > 1 ? 's' : ''} into Input
                     </Button>
+                    {(() => {
+                      const selectedDocs = dwUploadedDocuments.filter(d => dwSelectedDocumentIds.has(d.id));
+                      const primaryCount = selectedDocs.filter(d => d.role === 'primary').length;
+                      const sourceCount = selectedDocs.filter(d => d.role === 'source').length;
+                      return (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                          {primaryCount > 0 && <span className="text-emerald-600 dark:text-emerald-400 font-medium">{primaryCount} primary text{primaryCount > 1 ? 's' : ''}</span>}
+                          {primaryCount > 0 && sourceCount > 0 && ' + '}
+                          {sourceCount > 0 && <span className="text-blue-600 dark:text-blue-400 font-medium">{sourceCount} source doc{sourceCount > 1 ? 's' : ''}</span>}
+                          {primaryCount === 0 && sourceCount > 0 && ' (no primary text assigned - all will load as input)'}
+                        </p>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
