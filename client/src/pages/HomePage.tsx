@@ -9601,8 +9601,7 @@ Generated on: ${new Date().toLocaleString()}`;
               ) : (
                 <>
                   <RefreshCw className="w-6 h-6 mb-2" />
-                  <span className="font-bold text-lg">RECONSTRUCTION</span>
-                  <span className="text-xs mt-1 text-center opacity-80">Clean up logic</span>
+                  <span className="font-bold text-lg">DISSERTATE</span>
                 </>
               )}
             </Button>
