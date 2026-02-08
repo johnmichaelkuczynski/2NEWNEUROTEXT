@@ -179,6 +179,10 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
   const [libraryInstructions, setLibraryInstructions] = useState("");
   const [libraryDragOver, setLibraryDragOver] = useState(false);
+  const [dwUploadedDocuments, setDwUploadedDocuments] = useState<Array<{id: string; filename: string; content: string; wordCount: number}>>([]);
+  const [dwSelectedDocumentIds, setDwSelectedDocumentIds] = useState<Set<string>>(new Set());
+  const [dwLibraryInstructions, setDwLibraryInstructions] = useState("");
+  const [dwLibraryDragOver, setDwLibraryDragOver] = useState(false);
   const [validatorMode, setValidatorMode] = useState<"reconstruction" | null>(null);
   const [validatorDragOver, setValidatorDragOver] = useState(false);
   const [validatorOutput, setValidatorOutput] = useState<string>("");
@@ -863,6 +867,58 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         ? `${newDocs.length} document${newDocs.length > 1 ? 's' : ''} remaining in library`
         : "Library cleared",
     });
+  };
+
+  const handleDwMultipleFileUpload = async (files: File[]) => {
+    const maxDocs = 5;
+    const remainingSlots = maxDocs - dwUploadedDocuments.length;
+    if (remainingSlots <= 0) {
+      toast({ title: "Library Full", description: "Maximum 5 documents allowed. Remove some to add more.", variant: "destructive" });
+      return;
+    }
+    const filesToProcess = files.slice(0, remainingSlots);
+    if (filesToProcess.length < files.length) {
+      toast({ title: "Some Files Skipped", description: `Only ${filesToProcess.length} of ${files.length} files added (max 5 total)`, variant: "default" });
+    }
+    try {
+      const newDocs: Array<{id: string; filename: string; content: string; wordCount: number}> = [];
+      const newIds: string[] = [];
+      for (const file of filesToProcess) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await fetch('/api/extract-text', { method: 'POST', body: formData });
+        if (!response.ok) throw new Error(`Failed to extract text from ${file.name}`);
+        const data = await response.json();
+        const words = data.content.trim().split(/\s+/).filter(Boolean);
+        const docId = `dw-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        newIds.push(docId);
+        newDocs.push({ id: docId, filename: file.name, content: data.content, wordCount: words.length });
+      }
+      const allDocs = [...dwUploadedDocuments, ...newDocs];
+      setDwUploadedDocuments(allDocs);
+      setDwSelectedDocumentIds(prev => { const newSet = new Set(prev); newIds.forEach(id => newSet.add(id)); return newSet; });
+      toast({ title: `${filesToProcess.length} Document${filesToProcess.length > 1 ? 's' : ''} Added`, description: `Dissertation Wizard library now has ${allDocs.length} document${allDocs.length > 1 ? 's' : ''}.` });
+    } catch (error) {
+      console.error('DW file upload error:', error);
+      toast({ title: "Upload Failed", description: "Could not read one or more files. Please try a different format.", variant: "destructive" });
+    }
+  };
+
+  const toggleDwDocumentSelection = (docId: string) => {
+    setDwSelectedDocumentIds(prev => { const newSet = new Set(prev); if (newSet.has(docId)) { newSet.delete(docId); } else { newSet.add(docId); } return newSet; });
+  };
+
+  const clearDwDocumentLibrary = () => {
+    setDwUploadedDocuments([]);
+    setDwSelectedDocumentIds(new Set());
+    toast({ title: "Library Cleared", description: "All documents removed from Dissertation Wizard library." });
+  };
+
+  const handleDwRemoveDocument = (docId: string) => {
+    const newDocs = dwUploadedDocuments.filter(d => d.id !== docId);
+    setDwUploadedDocuments(newDocs);
+    setDwSelectedDocumentIds(prev => { const newSet = new Set(prev); newSet.delete(docId); return newSet; });
+    toast({ title: "Document Removed", description: newDocs.length > 0 ? `${newDocs.length} document${newDocs.length > 1 ? 's' : ''} remaining` : "Library cleared" });
   };
 
   // Download text as file
@@ -9244,6 +9300,164 @@ Generated on: ${new Date().toLocaleString()}`;
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Enter text to reconstruct, or just provide instructions to generate new content
             </p>
+          </div>
+
+          {/* Document Library - Multi-Document Upload Section */}
+          <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 p-5 rounded-lg border-2 border-blue-200 dark:border-blue-700">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Document Library
+                <Badge variant="secondary" className="ml-2">{dwUploadedDocuments.length}/5</Badge>
+              </h3>
+              {dwUploadedDocuments.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearDwDocumentLibrary}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  data-testid="button-clear-dw-library"
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Clear All
+                </Button>
+              )}
+            </div>
+            
+            <div
+              className={`relative border-2 border-dashed rounded-lg p-6 text-center transition-all ${
+                dwLibraryDragOver 
+                  ? "border-blue-500 bg-blue-100 dark:bg-blue-800/30" 
+                  : "border-blue-300 dark:border-blue-600 hover:border-blue-400"
+              } ${dwUploadedDocuments.length >= 5 ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+              onDragOver={(e) => { e.preventDefault(); if (dwUploadedDocuments.length < 5) setDwLibraryDragOver(true); }}
+              onDragEnter={(e) => { e.preventDefault(); if (dwUploadedDocuments.length < 5) setDwLibraryDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setDwLibraryDragOver(false); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDwLibraryDragOver(false);
+                if (dwUploadedDocuments.length >= 5) return;
+                const files = Array.from(e.dataTransfer.files || []).filter(f => 
+                  f.type === 'application/pdf' || 
+                  f.type === 'application/msword' || 
+                  f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                  f.type === 'text/plain' ||
+                  f.name.endsWith('.txt') || f.name.endsWith('.pdf') || f.name.endsWith('.doc') || f.name.endsWith('.docx')
+                );
+                if (files.length > 0) handleDwMultipleFileUpload(files);
+              }}
+              data-testid="dropzone-dw-library"
+            >
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.txt"
+                multiple
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                disabled={dwUploadedDocuments.length >= 5}
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (files && files.length > 0) handleDwMultipleFileUpload(Array.from(files));
+                  e.target.value = '';
+                }}
+                data-testid="input-dw-library-upload"
+              />
+              <Upload className="w-8 h-8 mx-auto mb-2 text-blue-500" />
+              <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
+                {dwUploadedDocuments.length >= 5 
+                  ? "Library full - remove documents to add more" 
+                  : "Drag & drop documents here or click to browse"}
+              </p>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                PDF, Word (.doc, .docx), TXT - Up to 5 documents
+              </p>
+            </div>
+            
+            {dwUploadedDocuments.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                    Select documents to use:
+                  </span>
+                  <Badge variant="outline" className="text-xs">
+                    {dwSelectedDocumentIds.size} selected ({dwUploadedDocuments.filter(d => dwSelectedDocumentIds.has(d.id)).reduce((s, d) => s + d.wordCount, 0).toLocaleString()} words)
+                  </Badge>
+                </div>
+                {dwUploadedDocuments.map((doc, index) => (
+                  <div 
+                    key={doc.id}
+                    className={`flex items-center gap-3 p-3 rounded-md border transition-all cursor-pointer ${
+                      dwSelectedDocumentIds.has(doc.id)
+                        ? "bg-blue-100 dark:bg-blue-800/40 border-blue-400 dark:border-blue-500"
+                        : "bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-700 hover:border-blue-300"
+                    }`}
+                    onClick={() => toggleDwDocumentSelection(doc.id)}
+                    data-testid={`dw-doc-item-${doc.id}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={dwSelectedDocumentIds.has(doc.id)}
+                      onChange={() => toggleDwDocumentSelection(doc.id)}
+                      className="w-4 h-4 accent-blue-600"
+                      onClick={(e) => e.stopPropagation()}
+                      data-testid={`dw-checkbox-doc-${doc.id}`}
+                    />
+                    <span className="text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-200 dark:bg-blue-700 px-2 py-0.5 rounded">
+                      {index + 1}
+                    </span>
+                    <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                    <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate" title={doc.filename}>
+                      {doc.filename}
+                    </span>
+                    <Badge variant="outline" className="text-xs flex-shrink-0">
+                      {doc.wordCount.toLocaleString()} words
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); handleDwRemoveDocument(doc.id); }}
+                      className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0"
+                      data-testid={`button-remove-dw-doc-${doc.id}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                
+                {dwSelectedDocumentIds.size > 0 && (
+                  <div className="mt-4 space-y-3">
+                    <label className="block text-sm font-medium text-blue-800 dark:text-blue-200">
+                      Instructions for selected documents:
+                    </label>
+                    <Textarea
+                      value={dwLibraryInstructions}
+                      onChange={(e) => setDwLibraryInstructions(e.target.value)}
+                      placeholder="e.g., COMBINE THESE INTO A SINGLE COHESIVE WORK&#10;or: EXTRACT THE KEY ARGUMENTS FROM EACH AND SYNTHESIZE&#10;or: COMPARE AND CONTRAST THE MAIN THEMES"
+                      className="min-h-[80px] text-sm"
+                      data-testid="textarea-dw-library-instructions"
+                    />
+                    <Button
+                      onClick={() => {
+                        const selectedDocs = dwUploadedDocuments.filter(d => dwSelectedDocumentIds.has(d.id));
+                        const combinedContent = combineDocuments(selectedDocs);
+                        setValidatorInputText(combinedContent);
+                        if (dwLibraryInstructions.trim()) {
+                          setValidatorCustomInstructions(dwLibraryInstructions);
+                        }
+                        toast({
+                          title: "Documents Loaded",
+                          description: `${selectedDocs.length} document${selectedDocs.length > 1 ? 's' : ''} loaded. ${dwLibraryInstructions ? 'Instructions applied.' : 'Add instructions below or run operations.'}`,
+                        });
+                      }}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                      data-testid="button-load-dw-selected"
+                    >
+                      <ArrowRight className="w-4 h-4 mr-2" />
+                      Load {dwSelectedDocumentIds.size} Selected Document{dwSelectedDocumentIds.size > 1 ? 's' : ''} into Input
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Input Area */}
