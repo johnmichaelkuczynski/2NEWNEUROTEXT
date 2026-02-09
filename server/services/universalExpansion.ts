@@ -68,10 +68,240 @@ interface ParsedInstructions {
   dialogueCharacters: string[];
 }
 
+interface DocumentSkeleton {
+  thesis: string;
+  outline: string[];
+  keyTerms: { term: string; definition: string }[];
+  commitmentLedger: { asserts: string[]; rejects: string[]; assumes: string[] };
+  entities: string[];
+  raw: string;
+}
+
+interface DeltaReport {
+  sectionName: string;
+  newClaims: string[];
+  termsUsed: string[];
+  conflictsDetected: string[];
+  commitmentStatus: string;
+}
+
 const anthropic = new Anthropic();
 
 // Cache for parsed instructions to avoid double computation
 const parseCache = new Map<string, ParsedInstructions>();
+
+async function extractSkeleton(sourceText: string, customInstructions: string): Promise<DocumentSkeleton> {
+  const wordCount = sourceText.trim().split(/\s+/).length;
+  const truncatedSource = wordCount > 15000
+    ? sourceText.trim().split(/\s+/).slice(0, 15000).join(' ') + '\n\n[...truncated for skeleton extraction...]'
+    : sourceText;
+
+  const prompt = `You are performing SKELETON EXTRACTION on a document before chunked generation begins.
+
+Your job is to capture the document's DNA in ~2000 tokens. This skeleton will be INJECTED into every
+subsequent generation prompt to enforce consistency. It must be precise, not vague.
+
+SOURCE TEXT (${wordCount} words):
+${truncatedSource}
+
+USER'S INSTRUCTIONS:
+${customInstructions || 'scholarly expansion'}
+
+═══════════════════════════════════════════════════════════════
+EXTRACT THE FOLLOWING (respond in this EXACT JSON format):
+═══════════════════════════════════════════════════════════════
+
+{
+  "thesis": "The document's central argument in 1-3 sentences. Be SPECIFIC - name the actual claim, not a meta-description like 'the author argues about X'. State WHAT they argue.",
+  
+  "outline": [
+    "Major claim/section 1: [specific claim with enough detail to enforce consistency]",
+    "Major claim/section 2: [specific claim]",
+    "... (8-20 items covering the document's argument arc)"
+  ],
+  
+  "keyTerms": [
+    {"term": "term1", "definition": "How THIS document defines/uses this term - not a dictionary definition"},
+    {"term": "term2", "definition": "Specific usage in this context"}
+  ],
+  
+  "commitmentLedger": {
+    "asserts": ["Specific propositions the document AFFIRMS as true"],
+    "rejects": ["Specific propositions the document DENIES or argues against"],
+    "assumes": ["Background assumptions the document takes for granted without arguing"]
+  },
+  
+  "entities": ["Person, concept, or technical term that must be referenced CONSISTENTLY throughout - use exact same phrasing every time"]
+}
+
+RULES:
+- keyTerms: Include EVERY technical term, philosophical concept, or domain-specific word. 
+  The definition must capture how THIS text uses it, not a generic definition.
+- commitmentLedger: Be exhaustive. Every claim the document makes IS an assertion. 
+  Every position it argues against IS a rejection. List them ALL.
+- entities: Include philosopher names, theory names, technical concepts that must stay stable.
+- thesis: Must be the ACTUAL thesis, not "the author discusses..." - state the CLAIM.
+- outline: Each item should be a specific claim, not a topic label.
+
+Return ONLY valid JSON. No markdown, no explanation.`;
+
+  console.log(`[Skeleton Extraction] Extracting skeleton from ${wordCount} word document...`);
+
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 4000,
+    messages: [{ role: "user", content: prompt }]
+  });
+
+  const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+
+  await logLLMCall({
+    jobType: 'universal_expansion',
+    modelName: 'claude-sonnet-4-20250514',
+    provider: 'anthropic',
+    promptSummary: 'Skeleton extraction (Pass 1)',
+    promptFull: prompt,
+    responseSummary: summarizeText(responseText),
+    responseFull: responseText,
+    status: 'success'
+  });
+
+  try {
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON found in skeleton response');
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    const skeleton: DocumentSkeleton = {
+      thesis: parsed.thesis || 'No thesis extracted',
+      outline: Array.isArray(parsed.outline) ? parsed.outline : [],
+      keyTerms: Array.isArray(parsed.keyTerms) ? parsed.keyTerms : [],
+      commitmentLedger: {
+        asserts: Array.isArray(parsed.commitmentLedger?.asserts) ? parsed.commitmentLedger.asserts : [],
+        rejects: Array.isArray(parsed.commitmentLedger?.rejects) ? parsed.commitmentLedger.rejects : [],
+        assumes: Array.isArray(parsed.commitmentLedger?.assumes) ? parsed.commitmentLedger.assumes : []
+      },
+      entities: Array.isArray(parsed.entities) ? parsed.entities : [],
+      raw: responseText
+    };
+
+    console.log(`[Skeleton Extraction] Complete: thesis=${skeleton.thesis.substring(0, 80)}..., ${skeleton.keyTerms.length} terms, ${skeleton.commitmentLedger.asserts.length} assertions, ${skeleton.entities.length} entities`);
+    return skeleton;
+  } catch (parseError) {
+    console.error(`[Skeleton Extraction] JSON parse failed, using raw text as skeleton`);
+    return {
+      thesis: 'Skeleton extraction failed - using source text directly',
+      outline: [],
+      keyTerms: [],
+      commitmentLedger: { asserts: [], rejects: [], assumes: [] },
+      entities: [],
+      raw: responseText
+    };
+  }
+}
+
+function formatSkeletonForInjection(skeleton: DocumentSkeleton): string {
+  const outlineBlock = skeleton.outline.length > 0
+    ? `\nARGUMENT ARC (the document's progression):\n${skeleton.outline.map((o, i) => `  ${i + 1}. ${o}`).join('\n')}`
+    : '';
+
+  const termsBlock = skeleton.keyTerms.length > 0
+    ? `\nKEY TERMS (use EXACTLY as defined - do NOT drift):\n${skeleton.keyTerms.map(t => `  • ${t.term}: ${t.definition}`).join('\n')}`
+    : '';
+
+  const commitments = [];
+  if (skeleton.commitmentLedger.asserts.length > 0) {
+    commitments.push(`ASSERTS (do NOT contradict):\n${skeleton.commitmentLedger.asserts.map(a => `  ✓ ${a}`).join('\n')}`);
+  }
+  if (skeleton.commitmentLedger.rejects.length > 0) {
+    commitments.push(`REJECTS (do NOT affirm):\n${skeleton.commitmentLedger.rejects.map(r => `  ✗ ${r}`).join('\n')}`);
+  }
+  if (skeleton.commitmentLedger.assumes.length > 0) {
+    commitments.push(`ASSUMES (treat as given):\n${skeleton.commitmentLedger.assumes.map(a => `  ○ ${a}`).join('\n')}`);
+  }
+  const commitmentBlock = commitments.length > 0
+    ? `\nCOMMITMENT LEDGER:\n${commitments.join('\n')}`
+    : '';
+
+  const entitiesBlock = skeleton.entities.length > 0
+    ? `\nENTITIES (reference consistently - use exact phrasing):\n${skeleton.entities.map(e => `  • ${e}`).join('\n')}`
+    : '';
+
+  return `═══════════════════════════════════════════════════════════════
+DOCUMENT SKELETON (extracted from source - CONSTRAINS all generation)
+═══════════════════════════════════════════════════════════════
+THESIS: ${skeleton.thesis}
+${outlineBlock}
+${termsBlock}
+${commitmentBlock}
+${entitiesBlock}
+═══════════════════════════════════════════════════════════════
+CONSTRAINT: Every section you write MUST be consistent with this skeleton.
+- Use terms EXACTLY as defined above. Do not redefine them.
+- Do NOT contradict any assertion in the commitment ledger.
+- Do NOT affirm anything the document rejects.
+- Reference entities using the exact phrasing listed.
+- Follow the argument arc - each section advances the progression.
+═══════════════════════════════════════════════════════════════`;
+}
+
+async function extractDeltaReport(sectionContent: string, sectionName: string, skeleton: DocumentSkeleton): Promise<DeltaReport> {
+  const sectionWords = sectionContent.trim().split(/\s+/).length;
+  const truncated = sectionWords > 4000
+    ? sectionContent.trim().split(/\s+/).slice(0, 4000).join(' ')
+    : sectionContent;
+
+  const prompt = `Analyze this generated section and produce a DELTA REPORT.
+
+SECTION: ${sectionName}
+SECTION TEXT (${sectionWords} words):
+${truncated}
+
+DOCUMENT SKELETON (for reference):
+THESIS: ${skeleton.thesis}
+ASSERTS: ${skeleton.commitmentLedger.asserts.slice(0, 10).join('; ')}
+REJECTS: ${skeleton.commitmentLedger.rejects.slice(0, 5).join('; ')}
+KEY TERMS: ${skeleton.keyTerms.slice(0, 10).map(t => t.term).join(', ')}
+
+Return JSON:
+{
+  "newClaims": ["New claims/arguments introduced in THIS section that were NOT in the skeleton"],
+  "termsUsed": ["Key terms from the skeleton that were used in this section"],
+  "conflictsDetected": ["Any statements that CONTRADICT the skeleton's assertions or redefine its terms - empty array if none"],
+  "commitmentStatus": "COMPLIANT if no conflicts, VIOLATION if contradictions found"
+}
+
+Return ONLY valid JSON.`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2000,
+      messages: [{ role: "user", content: prompt }]
+    });
+
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in delta response');
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    return {
+      sectionName,
+      newClaims: Array.isArray(parsed.newClaims) ? parsed.newClaims : [],
+      termsUsed: Array.isArray(parsed.termsUsed) ? parsed.termsUsed : [],
+      conflictsDetected: Array.isArray(parsed.conflictsDetected) ? parsed.conflictsDetected : [],
+      commitmentStatus: parsed.commitmentStatus || 'UNKNOWN'
+    };
+  } catch (err) {
+    console.error(`[Delta Report] Failed for ${sectionName}:`, err);
+    return {
+      sectionName,
+      newClaims: [],
+      termsUsed: [],
+      conflictsDetected: [],
+      commitmentStatus: 'EXTRACTION_FAILED'
+    };
+  }
+}
 
 /**
  * Parse word count from various formats including shorthand (1k, 2.5k, etc.)
@@ -460,7 +690,8 @@ async function generateSection(
   previousSections: string,
   parsedInstructions: ParsedInstructions,
   customInstructions: string,
-  pointsCoveredSoFar: string[] = []
+  pointsCoveredSoFar: string[] = [],
+  skeleton?: DocumentSkeleton
 ): Promise<{ content: string; newPointsCovered: string[] }> {
   
   const styleConstraints = [];
@@ -478,6 +709,8 @@ async function generateSection(
 
   const relevantSourceExcerpt = extractRelevantSourceExcerpt(originalText, sectionName, fullOutline, 3000);
   
+  const skeletonConstraint = skeleton ? formatSkeletonForInjection(skeleton) : '';
+
   const antiRedundancyBlock = pointsCoveredSoFar.length > 0
     ? `\n═══════════════════════════════════════════════════════════════
 CONCEPTS ALREADY ESTABLISHED (TREAT AS SETTLED - DO NOT RE-ARGUE):
@@ -557,6 +790,8 @@ FREUD: You speak of harmony, but at what psychological cost?
 Write the DIALOGUE now (${wordsToRequest} words of conversation):`;
       } else {
         prompt = `You are writing ONE section of a UNIFIED academic thesis/dissertation.
+
+${skeletonConstraint}
 
 ═══════════════════════════════════════════════════════════════
 PRIMARY SOURCE MATERIAL:
@@ -651,6 +886,8 @@ ${wordsRemaining > 4000 ? '8. DO NOT end the conversation yet - more dialogue wi
 Continue the DIALOGUE now (${wordsToRequest} more words):`;
       } else {
         prompt = `You are CONTINUING to write a section of a UNIFIED academic thesis/dissertation.
+
+${skeletonConstraint}
 
 ═══════════════════════════════════════════════════════════════
 PRIMARY SOURCE MATERIAL:
@@ -1022,6 +1259,26 @@ export async function universalExpand(request: ExpansionRequest): Promise<Expans
     }
   }
   
+  // ═══════════════════════════════════════════════════════════════
+  // PASS 1: SKELETON EXTRACTION
+  // Extract thesis, key terms, commitment ledger, entities BEFORE any generation
+  // ═══════════════════════════════════════════════════════════════
+  if (onChunk) {
+    onChunk({ type: 'progress', message: 'Pass 1: Extracting document skeleton (thesis, key terms, commitments, entities)...' });
+  }
+  
+  const skeleton = await extractSkeleton(rawText, customInstructions);
+  console.log(`[Universal Expansion] PASS 1 COMPLETE: Skeleton extracted - ${skeleton.keyTerms.length} terms, ${skeleton.commitmentLedger.asserts.length} assertions, ${skeleton.entities.length} entities`);
+
+  if (onChunk) {
+    onChunk({ type: 'progress', message: `Skeleton extracted: ${skeleton.keyTerms.length} key terms, ${skeleton.commitmentLedger.asserts.length} commitments, ${skeleton.entities.length} entities` });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // PASS 2 BEGINS: CONSTRAINED CHUNK PROCESSING
+  // Every section prompt receives the skeleton as a constraint
+  // ═══════════════════════════════════════════════════════════════
+  
   const outlinePrompt = `You are creating a detailed outline for an academic thesis/dissertation.
 
 ═══════════════════════════════════════════════════════════════
@@ -1105,11 +1362,12 @@ Return a comprehensive progressive outline.`;
     });
   }
   
-  // Generate each section
+  // Generate each section (PASS 2: constrained by skeleton)
   const sections: string[] = [];
   let previousSections = "";
   let cumulativeWordCount = 0;
   let pointsCoveredSoFar: string[] = [];
+  const deltaReports: DeltaReport[] = [];
   const maxWords = request.maxWords;
   
   for (let i = 0; i < structure.length; i++) {
@@ -1139,10 +1397,19 @@ Return a comprehensive progressive outline.`;
       previousSections,
       parsed,
       customInstructions,
-      pointsCoveredSoFar
+      pointsCoveredSoFar,
+      skeleton
     );
     const sectionContent = sectionResult.content;
     pointsCoveredSoFar = [...pointsCoveredSoFar, ...sectionResult.newPointsCovered];
+
+    // COLLECT DELTA REPORT for this section (Pass 2 output)
+    const delta = await extractDeltaReport(sectionContent, section.name, skeleton);
+    deltaReports.push(delta);
+    if (delta.conflictsDetected.length > 0) {
+      console.warn(`[Universal Expansion] CONFLICTS in ${section.name}: ${delta.conflictsDetected.join('; ')}`);
+    }
+    console.log(`[Universal Expansion] Delta for ${section.name}: ${delta.newClaims.length} new claims, ${delta.termsUsed.length} terms used, ${delta.commitmentStatus}`);
 
     // PERSIST CHUNK TO DATABASE IMMEDIATELY
     try {
@@ -1152,8 +1419,12 @@ Return a comprehensive progressive outline.`;
         coherenceMode: 'philosophical',
         chunkIndex: i,
         chunkText: sectionContent,
-        evaluationResult: { status: 'preserved', wordCount: countWords(sectionContent) },
-        stateAfter: { mode: 'philosophical', core_concepts: { section: section.name } }
+        evaluationResult: { 
+          status: delta.commitmentStatus === 'COMPLIANT' ? 'preserved' : 'flagged', 
+          wordCount: countWords(sectionContent),
+          deltaReport: delta
+        },
+        stateAfter: { mode: 'philosophical', core_concepts: { section: section.name }, delta }
       });
 
       await logChunkProcessing({
@@ -1162,7 +1433,7 @@ Return a comprehensive progressive outline.`;
         inputWordCount: countWords(text),
         outputWordCount: countWords(sectionContent),
         targetWordCount: section.wordCount,
-        passed: true
+        passed: delta.commitmentStatus !== 'VIOLATION'
       });
     } catch (dbError) {
       console.error(`[Universal Expansion] Failed to persist chunk ${i} to database:`, dbError);
@@ -1204,12 +1475,154 @@ Return a comprehensive progressive outline.`;
     }
   }
   
+  // ═══════════════════════════════════════════════════════════════
+  // PASS 3: STITCH PASS
+  // Detect cross-section contradictions, terminology drift, redundancies
+  // Execute micro-repairs on flagged sections
+  // ═══════════════════════════════════════════════════════════════
+  
+  const violationSections = deltaReports.filter(d => 
+    d.conflictsDetected.length > 0 || d.commitmentStatus === 'VIOLATION'
+  );
+  
+  if (violationSections.length > 0 && sections.length > 0) {
+    console.log(`[Universal Expansion] PASS 3: STITCH - ${violationSections.length} sections flagged for repair`);
+    if (onChunk) {
+      onChunk({ type: 'progress', message: `Pass 3: Stitching - repairing ${violationSections.length} flagged sections for consistency...` });
+    }
+
+    const deltasSummary = deltaReports.map(d => 
+      `[${d.sectionName}] Status: ${d.commitmentStatus} | New claims: ${d.newClaims.length} | Conflicts: ${d.conflictsDetected.join('; ') || 'none'}`
+    ).join('\n');
+
+    const stitchPrompt = `You are performing the STITCH PASS on a generated document.
+
+DOCUMENT SKELETON:
+THESIS: ${skeleton.thesis}
+KEY TERMS: ${skeleton.keyTerms.map(t => `${t.term}: ${t.definition}`).join('; ')}
+ASSERTS: ${skeleton.commitmentLedger.asserts.join('; ')}
+REJECTS: ${skeleton.commitmentLedger.rejects.join('; ')}
+
+DELTA REPORTS FROM ALL SECTIONS:
+${deltasSummary}
+
+FLAGGED SECTIONS WITH CONFLICTS:
+${violationSections.map(v => `- ${v.sectionName}: ${v.conflictsDetected.join('; ')}`).join('\n')}
+
+For each flagged section, provide a SPECIFIC REPAIR instruction.
+The repair should be MINIMAL - fix only the contradicting sentences, not rewrite the section.
+
+Return JSON:
+{
+  "repairs": [
+    {
+      "sectionName": "SECTION NAME",
+      "problematicText": "The exact sentence or phrase that contradicts the skeleton",
+      "repairedText": "The corrected version that aligns with the skeleton",
+      "reason": "Why this was flagged"
+    }
+  ],
+  "terminologyDrift": [
+    {
+      "term": "term that drifted",
+      "correctDefinition": "How it should be used per skeleton",
+      "driftedUsage": "How it was misused",
+      "affectedSections": ["section names"]
+    }
+  ],
+  "redundancies": [
+    {
+      "claim": "The redundant claim",
+      "appearsIn": ["section1", "section2"],
+      "recommendation": "Which section should keep it"
+    }
+  ]
+}
+
+Return ONLY valid JSON.`;
+
+    try {
+      const stitchResponse = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4000,
+        messages: [{ role: "user", content: stitchPrompt }]
+      });
+
+      const stitchText = stitchResponse.content[0].type === 'text' ? stitchResponse.content[0].text : '';
+      
+      await logLLMCall({
+        jobType: 'universal_expansion',
+        modelName: 'claude-sonnet-4-20250514',
+        provider: 'anthropic',
+        promptSummary: 'Stitch pass (Pass 3) - repair flagged sections',
+        promptFull: stitchPrompt,
+        responseSummary: summarizeText(stitchText),
+        responseFull: stitchText,
+        status: 'success'
+      });
+
+      const jsonMatch = stitchText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const stitchResult = JSON.parse(jsonMatch[0]);
+        
+        // Apply micro-repairs using index-based matching
+        if (Array.isArray(stitchResult.repairs) && stitchResult.repairs.length > 0) {
+          let repairsApplied = 0;
+          for (const repair of stitchResult.repairs) {
+            // Match by section name (sections are stored as "SECTION_NAME\n\ncontent")
+            let sectionIdx = structure.findIndex(s => s.name === repair.sectionName);
+            if (sectionIdx < 0) {
+              // Fallback: fuzzy match section name within section text
+              sectionIdx = sections.findIndex(s => s.startsWith(repair.sectionName));
+            }
+            if (sectionIdx < 0) {
+              // Last resort: search all sections for the problematic text
+              sectionIdx = sections.findIndex(s => s.includes(repair.problematicText));
+            }
+            if (sectionIdx >= 0 && repair.problematicText && repair.repairedText) {
+              const before = sections[sectionIdx];
+              sections[sectionIdx] = sections[sectionIdx].replace(repair.problematicText, repair.repairedText);
+              if (sections[sectionIdx] !== before) {
+                repairsApplied++;
+                console.log(`[Stitch] Repaired in ${repair.sectionName} (idx ${sectionIdx}): "${repair.problematicText.substring(0, 60)}..." → "${repair.repairedText.substring(0, 60)}..."`);
+              } else {
+                console.log(`[Stitch] Repair text not found verbatim in ${repair.sectionName} (idx ${sectionIdx}) - skipped`);
+              }
+            } else {
+              console.log(`[Stitch] Could not locate section for repair: ${repair.sectionName}`);
+            }
+          }
+          console.log(`[Stitch] ${repairsApplied}/${stitchResult.repairs.length} repairs successfully applied`);
+        }
+        
+        // Log terminology drift and redundancies
+        if (Array.isArray(stitchResult.terminologyDrift) && stitchResult.terminologyDrift.length > 0) {
+          console.log(`[Stitch] Terminology drift detected in ${stitchResult.terminologyDrift.length} terms`);
+          for (const drift of stitchResult.terminologyDrift) {
+            console.log(`[Stitch] Term "${drift.term}" drifted in sections: ${drift.affectedSections?.join(', ')}`);
+          }
+        }
+        
+        if (Array.isArray(stitchResult.redundancies) && stitchResult.redundancies.length > 0) {
+          console.log(`[Stitch] ${stitchResult.redundancies.length} redundancies detected`);
+        }
+        
+        console.log(`[Universal Expansion] PASS 3 COMPLETE: ${stitchResult.repairs?.length || 0} repairs applied`);
+      }
+    } catch (stitchError) {
+      console.error(`[Stitch] Stitch pass failed (non-fatal):`, stitchError);
+    }
+  } else {
+    console.log(`[Universal Expansion] PASS 3: No sections flagged - stitch pass skipped (all sections COMPLIANT)`);
+  }
+
   // Assemble final document
   const expandedText = sections.join('\n\n');
   const outputWordCount = expandedText.trim().split(/\s+/).length;
   const processingTimeMs = Date.now() - startTime;
   
   console.log(`[Universal Expansion] Complete: ${inputWordCount} → ${outputWordCount} words in ${processingTimeMs}ms`);
+  console.log(`[Universal Expansion] THREE-PASS CC SUMMARY: Skeleton(${skeleton.keyTerms.length} terms) → ${structure.length} sections(${deltaReports.length} deltas) → Stitch(${violationSections.length} repairs)`);
   
   // Stream completion if callback provided
   if (onChunk) {
@@ -1218,7 +1631,7 @@ Return a comprehensive progressive outline.`;
       totalSections: structure.length,
       totalWordCount: outputWordCount,
       progress: 100,
-      message: `Expansion complete: ${outputWordCount} words generated in ${Math.round(processingTimeMs / 1000)}s`
+      message: `Expansion complete: ${outputWordCount} words generated in ${Math.round(processingTimeMs / 1000)}s (3-pass CC: ${skeleton.keyTerms.length} terms enforced, ${violationSections.length} repairs)`
     });
   }
   

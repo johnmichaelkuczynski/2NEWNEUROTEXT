@@ -42,6 +42,12 @@ The application employs a monorepo structure, separating client and server compo
         - **Real-time polling**: Frontend polls every 5 seconds for status updates with proper cleanup on unmount
         - **Supports up to 100,000 words**: Handles large documents through chunked processing
     - **Universal Expansion Service** (Jan 2026): Protocol-based reconstruction that obeys ALL user instructions exactly, regardless of input length. Key features:
+        - **THREE-PASS CROSS-CHUNK COHERENCE (CC) ARCHITECTURE** (Feb 2026):
+            - **PASS 1 - SKELETON EXTRACTION**: Before any generation, extracts document DNA: THESIS, ARGUMENT ARC (8-20 claims), KEY_TERMS (with exact definitions), COMMITMENT_LEDGER (asserts/rejects/assumes), ENTITIES (~2000 tokens)
+            - **PASS 2 - CONSTRAINED CHUNK PROCESSING**: Skeleton injected into EVERY section prompt (initial + continuation). After each section, delta report collected (new claims, terms used, conflicts detected). Delta reports saved to database with chunks.
+            - **PASS 3 - STITCH PASS**: After all sections generated, reviews all delta reports. If conflicts/violations detected, executes micro-repairs (find-and-replace). Logs terminology drift and redundancies.
+            - **Skeleton Constraint**: Every section must use terms exactly as defined, not contradict assertions, not affirm rejections, reference entities consistently
+            - **Delta Reports**: Track what each section adds (new claims, terms used, conflict detection with COMPLIANT/VIOLATION status)
         - **No thresholds**: Input length is irrelevant; user instructions are ALWAYS followed
         - **Target word count parsing**: Detects "expand to X words" instructions and delivers exact output
         - **Structure parsing**: Detects chapter/section specifications with word counts (e.g., "CHAPTER 1: Introduction (3,500 words)")
