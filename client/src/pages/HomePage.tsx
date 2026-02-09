@@ -61,6 +61,81 @@ const stripMarkdown = (text: string): string => {
     .trim();
 };
 
+const generateTableOfContents = (text: string): string => {
+  if (!text || text.trim().length === 0) return text;
+
+  const lines = text.split('\n');
+  const headings: Array<{ title: string; level: number }> = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    let match: RegExpMatchArray | null = null;
+
+    match = trimmed.match(/^(?:CHAPTER|Chapter)\s+(\d+|[IVXLCDM]+)\s*[:\.\-–—]\s*(.+)/i);
+    if (match) {
+      headings.push({ title: trimmed, level: 1 });
+      continue;
+    }
+
+    match = trimmed.match(/^(?:PART|Part)\s+(\d+|[IVXLCDM]+|One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten)\s*[:\.\-–—]\s*(.+)/i);
+    if (match) {
+      headings.push({ title: trimmed, level: 1 });
+      continue;
+    }
+
+    match = trimmed.match(/^(?:SECTION|Section)\s+(\d+|[IVXLCDM]+)\s*[:\.\-–—]\s*(.+)/i);
+    if (match) {
+      headings.push({ title: trimmed, level: 1 });
+      continue;
+    }
+
+    match = trimmed.match(/^(?:ACT|Act)\s+(\d+|[IVXLCDM]+|One|Two|Three|Four|Five)\s*[:\.\-–—]?\s*(.*)/i);
+    if (match) {
+      headings.push({ title: trimmed, level: 1 });
+      continue;
+    }
+
+    match = trimmed.match(/^([IVXLCDM]+)\.\s+(.+)/);
+    if (match && match[1].length <= 6) {
+      headings.push({ title: trimmed, level: 1 });
+      continue;
+    }
+
+    match = trimmed.match(/^(\d+)\.\s+([A-Z][A-Za-z\s,':;\-–—&]+)$/);
+    if (match && trimmed.length < 150 && !trimmed.endsWith('.') || (match && trimmed.match(/^\d+\.\s+[A-Z][A-Z\s,':;\-–—&]+$/))) {
+      headings.push({ title: trimmed, level: 1 });
+      continue;
+    }
+
+    match = trimmed.match(/^(\d+\.\d+)\s+(.+)/);
+    if (match && trimmed.length < 120) {
+      headings.push({ title: trimmed, level: 2 });
+      continue;
+    }
+
+    if (/^[A-Z][A-Z\s,':;\-–—&]{4,}$/.test(trimmed) && trimmed.length < 100 && trimmed.length > 3) {
+      headings.push({ title: trimmed, level: 1 });
+      continue;
+    }
+  }
+
+  if (headings.length < 2) return text;
+
+  let toc = "TABLE OF CONTENTS\n";
+  toc += "═".repeat(40) + "\n\n";
+
+  for (const heading of headings) {
+    const indent = heading.level === 2 ? "    " : "";
+    toc += `${indent}${heading.title}\n`;
+  }
+
+  toc += "\n" + "═".repeat(40) + "\n\n";
+
+  return toc + text;
+};
+
 const HomePage: React.FC = () => {
   const { toast } = useToast();
   
@@ -1066,7 +1141,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
             setDwProgress("");
             setDwProjectId(null);
             const outputText = updated.reconstructedText || "";
-            setDwOutput(stripMarkdown(outputText));
+            setDwOutput(generateTableOfContents(stripMarkdown(outputText)));
             const outputWords = outputText.trim().split(/\s+/).length;
             toast({ title: "Processing Complete", description: `Generated ${outputWords.toLocaleString()} words.` });
           } else if (updated.status === 'failed') {
@@ -1790,7 +1865,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
       const data = await response.json();
       if (data.success && data.output) {
-        setValidatorOutput(stripMarkdown(data.output));
+        setValidatorOutput(generateTableOfContents(stripMarkdown(data.output)));
         setObjectionsInputText(stripMarkdown(data.output));
         toast({
           title: "Validation Complete!",
@@ -1853,7 +1928,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       
       const data = await response.json();
       if (data.success && data.output) {
-        setValidatorOutput(stripMarkdown(data.output));
+        setValidatorOutput(generateTableOfContents(stripMarkdown(data.output)));
         setRefineWordCount("");
         setRefineInstructions("");
         toast({ title: "Reconstruction refined successfully!" });
@@ -2344,7 +2419,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       const reconstructionOutput = successfulResults[0]?.output || validatorInputText;
       
       // Store reconstruction output (popup already open)
-      setFullSuiteReconstructionOutput(reconstructionOutput);
+      setFullSuiteReconstructionOutput(generateTableOfContents(reconstructionOutput));
 
       // ============ STAGE 2: OBJECTIONS ============
       setFullSuiteStage("objections");
@@ -6348,7 +6423,7 @@ Generated on: ${new Date().toLocaleString()}`;
                       });
                       const data = await response.json();
                       if (data.success) {
-                        setValidatorOutput(stripMarkdown(data.output));
+                        setValidatorOutput(generateTableOfContents(stripMarkdown(data.output)));
                         toast({
                           title: "Reconstruction Complete",
                           description: redoCustomInstructions ? "Regenerated with your custom instructions" : "Regenerated with default settings",
@@ -9834,7 +9909,7 @@ Generated on: ${new Date().toLocaleString()}`;
         startNew={dwStreamingStartNew}
         projectId={dwProjectId}
         onClose={() => { setDwStreamingModalOpen(false); setDwStreamingStartNew(false); }}
-        onComplete={(finalText: string) => { if (finalText) setDwOutput(stripMarkdown(finalText)); }}
+        onComplete={(finalText: string) => { if (finalText) setDwOutput(generateTableOfContents(stripMarkdown(finalText))); }}
       />
 
       {/* Chat Dialog - Always visible below everything */}
@@ -9867,7 +9942,7 @@ Generated on: ${new Date().toLocaleString()}`;
         }}
         onComplete={(finalText: string) => {
           if (finalText) {
-            setValidatorOutput(stripMarkdown(finalText));
+            setValidatorOutput(generateTableOfContents(stripMarkdown(finalText)));
             setObjectionsInputText(stripMarkdown(finalText));
           }
         }}

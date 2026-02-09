@@ -26,6 +26,59 @@ const stripMarkdown = (text: string): string => {
     .trim();
 };
 
+const generateTableOfContents = (text: string): string => {
+  if (!text || text.trim().length === 0) return text;
+
+  const lines = text.split('\n');
+  const headings: Array<{ title: string; level: number }> = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    let match: RegExpMatchArray | null = null;
+
+    match = trimmed.match(/^(?:CHAPTER|Chapter)\s+(\d+|[IVXLCDM]+)\s*[:\.\-–—]\s*(.+)/i);
+    if (match) { headings.push({ title: trimmed, level: 1 }); continue; }
+
+    match = trimmed.match(/^(?:PART|Part)\s+(\d+|[IVXLCDM]+|One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten)\s*[:\.\-–—]\s*(.+)/i);
+    if (match) { headings.push({ title: trimmed, level: 1 }); continue; }
+
+    match = trimmed.match(/^(?:SECTION|Section)\s+(\d+|[IVXLCDM]+)\s*[:\.\-–—]\s*(.+)/i);
+    if (match) { headings.push({ title: trimmed, level: 1 }); continue; }
+
+    match = trimmed.match(/^(?:ACT|Act)\s+(\d+|[IVXLCDM]+|One|Two|Three|Four|Five)\s*[:\.\-–—]?\s*(.*)/i);
+    if (match) { headings.push({ title: trimmed, level: 1 }); continue; }
+
+    match = trimmed.match(/^([IVXLCDM]+)\.\s+(.+)/);
+    if (match && match[1].length <= 6) { headings.push({ title: trimmed, level: 1 }); continue; }
+
+    match = trimmed.match(/^(\d+)\.\s+([A-Z][A-Za-z\s,':;\-–—&]+)$/);
+    if (match && trimmed.length < 150 && !trimmed.endsWith('.') || (match && trimmed.match(/^\d+\.\s+[A-Z][A-Z\s,':;\-–—&]+$/))) {
+      headings.push({ title: trimmed, level: 1 }); continue;
+    }
+
+    match = trimmed.match(/^(\d+\.\d+)\s+(.+)/);
+    if (match && trimmed.length < 120) { headings.push({ title: trimmed, level: 2 }); continue; }
+
+    if (/^[A-Z][A-Z\s,':;\-–—&]{4,}$/.test(trimmed) && trimmed.length < 100 && trimmed.length > 3) {
+      headings.push({ title: trimmed, level: 1 }); continue;
+    }
+  }
+
+  if (headings.length < 2) return text;
+
+  let toc = "TABLE OF CONTENTS\n";
+  toc += "═".repeat(40) + "\n\n";
+  for (const heading of headings) {
+    const indent = heading.level === 2 ? "    " : "";
+    toc += `${indent}${heading.title}\n`;
+  }
+  toc += "\n" + "═".repeat(40) + "\n\n";
+
+  return toc + text;
+};
+
 interface DwDocument {
   id: string;
   filename: string;
@@ -281,7 +334,7 @@ const DissertationWizardPage: React.FC = () => {
             setProgress("");
             setProjectId(null);
             const outputText = updated.reconstructedText || "";
-            setOutput(stripMarkdown(outputText));
+            setOutput(generateTableOfContents(stripMarkdown(outputText)));
             const outputWords = outputText.trim().split(/\s+/).length;
             toast({ title: "Processing Complete", description: `Generated ${outputWords.toLocaleString()} words.` });
           } else if (updated.status === 'failed') {
@@ -687,7 +740,7 @@ const DissertationWizardPage: React.FC = () => {
         startNew={streamingStartNew}
         projectId={projectId}
         onClose={() => { setStreamingModalOpen(false); setStreamingStartNew(false); }}
-        onComplete={(finalText: string) => { if (finalText) setOutput(stripMarkdown(finalText)); }}
+        onComplete={(finalText: string) => { if (finalText) setOutput(generateTableOfContents(stripMarkdown(finalText))); }}
       />
     </div>
   );
