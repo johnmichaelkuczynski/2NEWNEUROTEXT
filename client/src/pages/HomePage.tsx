@@ -1743,8 +1743,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
             
             const outputWords = outputText.trim().split(/\s+/).length;
             toast({
-              title: "Coherence Processing Complete",
-              description: `Generated ${outputWords.toLocaleString()} words through multi-pass coherence system.`,
+              title: "Processing Complete",
+              description: `Generated ${outputWords.toLocaleString()} words.`,
             });
           } else if (updated.status === 'failed') {
             if (dwPollRef.current) {
@@ -1756,9 +1756,23 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
             setDwProjectId(null);
             toast({
               title: "Processing Failed",
-              description: "An error occurred during coherence processing.",
+              description: "An error occurred during processing.",
               variant: "destructive",
             });
+          } else if (updated.status === 'processing' && updated.reconstructedText) {
+            const headerMatch = updated.reconstructedText.match(/\[GENERATING: (.+?)\]/);
+            if (headerMatch) {
+              setDwProgress(`Generating... ${headerMatch[1]}`);
+            } else {
+              const words = updated.reconstructedText.trim().split(/\s+/).length;
+              if (words > 10) {
+                setDwProgress(`Generating... ${words.toLocaleString()} words so far`);
+              }
+            }
+            const textAfterHeader = updated.reconstructedText.replace(/\[GENERATING:.*?\]\n*/s, '').trim();
+            if (textAfterHeader.length > 100) {
+              setValidatorOutput(stripMarkdown(textAfterHeader));
+            }
           }
         } catch (e) {
           console.error("DW polling error:", e);

@@ -1656,10 +1656,34 @@ ${externalKnowledge}`;
             console.log(`[Reconstruction] Routing project ${project.id} through Universal Expansion (coherence system)`);
             const aggressiveness = (fidelityLevel === 'conservative') ? 'conservative' : 'aggressive';
             
+            let sectionsCompleted = 0;
+            let totalSections = 0;
+            let partialText = '';
+            
             const result = await universalExpand({
               text,
               customInstructions: effectiveInstructions,
               aggressiveness,
+              onChunk: (chunk) => {
+                if (chunk.type === 'outline') {
+                  totalSections = chunk.totalSections || 15;
+                  storage.updateReconstructionProject(project.id, {
+                    reconstructedText: `[GENERATING: 0/${totalSections} sections]\n\nOutline generated. Generating content...`,
+                  });
+                } else if (chunk.type === 'section_complete' && chunk.sectionContent) {
+                  sectionsCompleted++;
+                  if (chunk.totalSections) totalSections = chunk.totalSections;
+                  partialText += (partialText ? '\n\n' : '') + chunk.sectionContent;
+                  const wordsSoFar = partialText.trim().split(/\s+/).length;
+                  storage.updateReconstructionProject(project.id, {
+                    reconstructedText: `[GENERATING: ${sectionsCompleted}/${totalSections} sections | ${wordsSoFar.toLocaleString()} words so far]\n\n${partialText}`,
+                  });
+                } else if (chunk.type === 'progress' && chunk.message) {
+                  storage.updateReconstructionProject(project.id, {
+                    reconstructedText: `[GENERATING: ${chunk.message}]`,
+                  });
+                }
+              },
             });
             
             await storage.updateReconstructionProject(project.id, {
