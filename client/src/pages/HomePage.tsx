@@ -4621,7 +4621,7 @@ Generated on: ${new Date().toLocaleString()}`;
 
             <div>
               <label className="text-sm font-medium text-gray-700 mb-2 block">
-                Custom Instructions (optional)
+                Instructions (Optional)
               </label>
               <Textarea
                 value={customInstructions}
@@ -4743,7 +4743,7 @@ Generated on: ${new Date().toLocaleString()}`;
                     </div>
                     <div className="flex-[2] min-w-[150px]">
                       <label className="block text-xs text-blue-700 dark:text-blue-300 mb-1">
-                        Custom Instructions
+                        Instructions
                       </label>
                       <input
                         type="text"
@@ -5353,7 +5353,7 @@ Generated on: ${new Date().toLocaleString()}`;
                               </div>
                               <div className="flex-[2] min-w-[150px]">
                                 <label className="block text-xs text-emerald-700 dark:text-emerald-300 mb-1">
-                                  Custom Instructions
+                                  Instructions
                                 </label>
                                 <input
                                   type="text"
@@ -5492,7 +5492,7 @@ Generated on: ${new Date().toLocaleString()}`;
                               </div>
                               <div className="flex-[2] min-w-[150px]">
                                 <label className="block text-xs text-purple-700 dark:text-purple-300 mb-1">
-                                  Custom Instructions
+                                  Instructions
                                 </label>
                                 <input
                                   type="text"
@@ -5690,10 +5690,10 @@ Generated on: ${new Date().toLocaleString()}`;
             </p>
           </div>
 
-          {/* Optional Custom Instructions Box */}
+          {/* Instructions Box */}
           <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 mt-4">
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Custom Instructions (Optional)
+              Instructions (Optional)
             </label>
             <Textarea
               value={validatorCustomInstructions}
@@ -5876,7 +5876,7 @@ Generated on: ${new Date().toLocaleString()}`;
                   </div>
                   <div className="flex-[2] min-w-[200px]">
                     <label className="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
-                      Custom Instructions (Optional)
+                      Instructions (Optional)
                     </label>
                     <input
                       type="text"
@@ -6196,7 +6196,7 @@ Generated on: ${new Date().toLocaleString()}`;
                 {/* Custom Instructions */}
                 <div>
                   <Label className="text-sm font-medium text-orange-800 dark:text-orange-200">
-                    Custom Instructions (optional)
+                    Instructions (Optional)
                   </Label>
                   <Textarea
                     value={objectionsCustomInstructions}
@@ -6261,7 +6261,7 @@ Generated on: ${new Date().toLocaleString()}`;
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <RefreshCw className="w-5 h-5 text-amber-600" />
-                  Redo with Custom Instructions
+                  Redo with Instructions
                 </DialogTitle>
                 <DialogDescription>
                   Enter specific instructions to guide the reconstruction. Leave blank for default behavior.
@@ -6443,7 +6443,7 @@ Generated on: ${new Date().toLocaleString()}`;
                   {/* Custom Instructions - Auto-imported from Reconstruction */}
                   <div>
                     <Label className="text-sm font-medium text-rose-800 dark:text-rose-200">
-                      Custom Instructions (Auto-imported from Reconstruction)
+                      Instructions (Auto-imported from Reconstruction)
                     </Label>
                     {validatorCustomInstructions && (
                       <div className="mt-2 p-3 bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-700 rounded-md">
@@ -6596,7 +6596,7 @@ Generated on: ${new Date().toLocaleString()}`;
                     </div>
                     <div className="flex-[2] min-w-[250px]">
                       <label className="block text-sm font-medium text-purple-800 dark:text-purple-200 mb-1">
-                        Custom Instructions (Optional)
+                        Instructions (Optional)
                       </label>
                       <input
                         type="text"
@@ -8792,7 +8792,7 @@ Generated on: ${new Date().toLocaleString()}`;
               {/* Custom Instructions Box - Under Box A */}
               <div className="space-y-3">
                 <label className="block text-sm font-semibold text-blue-800 dark:text-blue-200">
-                  Custom Instructions (Optional)
+                  Instructions (Optional)
                 </label>
                 <Textarea
                   value={humanizerCustomInstructions}
@@ -9034,7 +9034,7 @@ Generated on: ${new Date().toLocaleString()}`;
             </div>
             <div>
               <label className="block text-sm font-semibold text-purple-700 dark:text-purple-300 mb-2">
-                Custom Instructions (optional)
+                Instructions (Optional)
               </label>
               <Input
                 value={screenplayCustomInstructions}
@@ -9586,7 +9586,7 @@ Generated on: ${new Date().toLocaleString()}`;
                       <p className="font-medium">How it works:</p>
                       <p>PRIMARY TEXT goes into the Input box below (this is what gets rewritten/expanded).</p>
                       <p>SOURCE MATERIAL gets attached as reference for the AI to borrow from.</p>
-                      <p>Then write your instructions in "Custom Instructions" below (e.g., "ILLUSTRATE EACH CLAIM WITH EXAMPLES FROM THE UPLOADS").</p>
+                      <p>Then write your instructions in the "Instructions" box below (e.g., "ILLUSTRATE EACH CLAIM WITH EXAMPLES FROM THE UPLOADS").</p>
                     </div>
                     <Button
                       onClick={() => {
@@ -9610,13 +9610,13 @@ Generated on: ${new Date().toLocaleString()}`;
                           }
                           toast({
                             title: "Documents Ready",
-                            description: `Primary text loaded to Input. ${sourceDocs.length} source doc(s) attached as reference. Now write your instructions in "Custom Instructions" below.`,
+                            description: `Primary text loaded to Input. ${sourceDocs.length} source doc(s) attached as reference. Now write your instructions in the "Instructions" box below.`,
                           });
                         } else if (primaryDocs.length > 0) {
                           setValidatorInputText(combinedPrimary);
                           toast({
                             title: "Primary Text Loaded",
-                            description: `Loaded to Input box. Write your instructions in "Custom Instructions" below, then click DISSERTATE.`,
+                            description: `Loaded to Input box. Write your instructions in the "Instructions" box below, then click DISSERTATE.`,
                           });
                         } else {
                           const combined = combineDocuments(selectedDocs);
@@ -9725,7 +9725,7 @@ Generated on: ${new Date().toLocaleString()}`;
           {/* Custom Instructions */}
           <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 mt-4">
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Custom Instructions (Optional)
+              Instructions (Optional)
             </label>
             <Textarea
               value={validatorCustomInstructions}
