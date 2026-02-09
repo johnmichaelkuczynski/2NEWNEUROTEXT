@@ -183,6 +183,10 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [dwSelectedDocumentIds, setDwSelectedDocumentIds] = useState<Set<string>>(new Set());
   const [dwLibraryInstructions, setDwLibraryInstructions] = useState("");
   const [dwLibraryDragOver, setDwLibraryDragOver] = useState(false);
+  const [dwProcessing, setDwProcessing] = useState(false);
+  const [dwProgress, setDwProgress] = useState("");
+  const [dwProjectId, setDwProjectId] = useState<number | null>(null);
+  const dwPollRef = useRef<NodeJS.Timeout | null>(null);
   const [validatorMode, setValidatorMode] = useState<"reconstruction" | null>(null);
   const [validatorDragOver, setValidatorDragOver] = useState(false);
   const [validatorOutput, setValidatorOutput] = useState<string>("");
@@ -503,6 +507,9 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     return () => {
       if (reconstructionPollRef.current) {
         clearInterval(reconstructionPollRef.current);
+      }
+      if (dwPollRef.current) {
+        clearInterval(dwPollRef.current);
       }
     };
   }, []);
@@ -1645,6 +1652,128 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     } finally {
       setValidatorLoading(false);
       setValidatorProgress("");
+    }
+  };
+
+  const handleDissertate = async () => {
+    const hasInputText = validatorInputText.trim().length > 0;
+    const hasInstructions = validatorCustomInstructions.trim().length > 0;
+    
+    if (!hasInputText && !hasInstructions) {
+      toast({
+        title: "Input Required",
+        description: "Please enter text OR instructions. You can use instructions alone to generate content.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const interpretation = interpretInput(validatorInputText, validatorCustomInstructions);
+    if (interpretation.wasSwapped) {
+      toast({
+        title: "Inputs Interpreted",
+        description: "Detected instructions in text box and content in instructions box - they've been swapped automatically.",
+      });
+    }
+    
+    const effectiveText = interpretation.effectiveText;
+    let effectiveInstructions = interpretation.effectiveInstructions;
+    
+    const targetWC = parseInt(validatorTargetWordCount);
+    if (targetWC && targetWC > 0) {
+      const hasExpand = /expand\s*(to|into)?\s*\d+/i.test(effectiveInstructions);
+      if (!hasExpand) {
+        effectiveInstructions = `EXPAND TO ${targetWC} WORDS. ${effectiveInstructions}`;
+      }
+    }
+    
+    const effectiveInputText = effectiveText.trim().length > 0 ? effectiveText : effectiveInstructions;
+    
+    setDwProcessing(true);
+    setDwProgress("Starting coherence-based reconstruction...");
+    setValidatorOutput("");
+    
+    try {
+      const response = await fetch("/api/reconstruction/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: effectiveInputText,
+          title: "Dissertation Wizard Job",
+          targetWordCount: targetWC > 0 ? targetWC : undefined,
+          customInstructions: effectiveInstructions,
+          llmProvider: validatorLLMProvider,
+          fidelityLevel: validatorFidelityLevel,
+        }),
+      });
+      
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Failed to start reconstruction");
+      }
+      
+      const project = await response.json();
+      setDwProjectId(project.id);
+      setDwProgress("Processing through coherence system... This may take 1-5 minutes for large documents.");
+      
+      toast({
+        title: "Coherence Processing Started",
+        description: "Your text is being processed through the multi-pass coherence system. Results will appear when complete.",
+      });
+      
+      if (dwPollRef.current) clearInterval(dwPollRef.current);
+      
+      dwPollRef.current = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/reconstruction/${project.id}`);
+          if (!statusRes.ok) return;
+          const updated = await statusRes.json();
+          
+          if (updated.status === 'completed') {
+            if (dwPollRef.current) {
+              clearInterval(dwPollRef.current);
+              dwPollRef.current = null;
+            }
+            setDwProcessing(false);
+            setDwProgress("");
+            setDwProjectId(null);
+            
+            const outputText = updated.reconstructedText || "";
+            setValidatorOutput(stripMarkdown(outputText));
+            setObjectionsInputText(stripMarkdown(outputText));
+            
+            const outputWords = outputText.trim().split(/\s+/).length;
+            toast({
+              title: "Coherence Processing Complete",
+              description: `Generated ${outputWords.toLocaleString()} words through multi-pass coherence system.`,
+            });
+          } else if (updated.status === 'failed') {
+            if (dwPollRef.current) {
+              clearInterval(dwPollRef.current);
+              dwPollRef.current = null;
+            }
+            setDwProcessing(false);
+            setDwProgress("");
+            setDwProjectId(null);
+            toast({
+              title: "Processing Failed",
+              description: "An error occurred during coherence processing.",
+              variant: "destructive",
+            });
+          }
+        } catch (e) {
+          console.error("DW polling error:", e);
+        }
+      }, 5000);
+      
+    } catch (error: any) {
+      setDwProcessing(false);
+      setDwProgress("");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to start coherence processing.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -9651,23 +9780,21 @@ Generated on: ${new Date().toLocaleString()}`;
           {/* Reconstruction Button */}
           <div className="mb-6 mt-6">
             <Button
-              onClick={() => {
-                handleValidatorProcess("reconstruction");
-              }}
+              onClick={handleDissertate}
               className={`flex flex-col items-center justify-center p-6 h-auto w-full ${
-                validatorMode === "reconstruction" 
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
-                  : "bg-white dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border-2 border-emerald-300"
+                dwProcessing 
+                  ? "bg-emerald-600 text-white" 
+                  : "bg-white dark:bg-gray-800 text-emerald-700 dark:text-emerald-300 border-2 border-emerald-300"
               }`}
-              disabled={validatorLoading || validatorBatchLoading}
+              disabled={dwProcessing || validatorLoading || validatorBatchLoading}
               data-testid="button-reconstruction-bottom"
             >
-              {validatorLoading ? (
+              {dwProcessing ? (
                 <>
                   <Loader2 className="w-6 h-6 mb-2 animate-spin" />
                   <span className="font-bold text-lg">PROCESSING...</span>
                   <span className="text-xs mt-1 text-center opacity-80">
-                    {validatorProgress || "Reconstructing text..."}
+                    Coherence system active
                   </span>
                 </>
               ) : (
@@ -9678,14 +9805,14 @@ Generated on: ${new Date().toLocaleString()}`;
               )}
             </Button>
             
-            {validatorLoading && validatorProgress && (
+            {dwProcessing && dwProgress && (
               <div className="mt-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-700">
                 <div className="flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-                  <span className="text-sm text-emerald-700 dark:text-emerald-300">{validatorProgress}</span>
+                  <span className="text-sm text-emerald-700 dark:text-emerald-300">{dwProgress}</span>
                 </div>
                 <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
-                  Long documents use outline-first mode for better coherence. This may take 1-3 minutes.
+                  Using multi-pass coherence system with skeleton extraction, chunked reconstruction, and cross-chunk stitching. This may take 1-5 minutes.
                 </p>
               </div>
             )}

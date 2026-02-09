@@ -1614,7 +1614,7 @@ ${externalKnowledge}`;
   // Conservative Reconstruction endpoint - creates project and triggers processing
   app.post("/api/reconstruction/start", async (req: Request, res: Response) => {
     try {
-      const { text, title, targetWordCount, customInstructions } = req.body;
+      const { text, title, targetWordCount, customInstructions, llmProvider, fidelityLevel } = req.body;
       
       if (!text || typeof text !== 'string' || text.trim().length === 0) {
         return res.status(400).json({ error: "Text content is required for reconstruction" });
@@ -1629,26 +1629,74 @@ ${externalKnowledge}`;
         status: "processing"
       });
       
-      console.log(`[Reconstruction] Created project ${project.id}: "${project.title}" (${text.split(/\s+/).length} words)`);
+      const inputWordCount = text.trim().split(/\s+/).length;
+      console.log(`[Reconstruction] Created project ${project.id}: "${project.title}" (${inputWordCount} words)`);
       
-      // Trigger async reconstruction processing
       (async () => {
         try {
-          const { crossChunkReconstruct } = await import('./services/crossChunkCoherence');
+          let effectiveInstructions = customInstructions || '';
+          const parsedTarget = targetWordCount ? parseInt(targetWordCount) : 0;
+          let userExplicitlyRequestedExpansion = false;
           
-          const result = await crossChunkReconstruct(
-            text,
-            customInstructions || `Expand to approximately ${targetWordCount} words while preserving the original argument structure.`,
-            'anthropic'
-          );
+          const { hasExpansionInstructions, universalExpand } = await import('./services/universalExpansion');
           
-          // Update project with results
-          await storage.updateReconstructionProject(project.id, {
-            reconstructedText: result.stitchedDocument,
-            status: 'completed'
-          });
+          if (parsedTarget > 0) {
+            userExplicitlyRequestedExpansion = true;
+            const hasExpandDirective = /expand\s*(to|into)?\s*\d+/i.test(effectiveInstructions);
+            if (!hasExpandDirective) {
+              effectiveInstructions = `EXPAND TO ${parsedTarget} WORDS. ${effectiveInstructions}`;
+            }
+          } else if (effectiveInstructions.trim() && hasExpansionInstructions(effectiveInstructions)) {
+            userExplicitlyRequestedExpansion = true;
+          } else if (!effectiveInstructions.trim()) {
+            effectiveInstructions = "Write the maximally coherent scholarly version. NO PUFFERY. NO HEDGING. Every word must carry meaning.";
+          }
           
-          console.log(`[Reconstruction] Completed project ${project.id}: ${result.stitchedDocument.split(/\s+/).length} words`);
+          if (userExplicitlyRequestedExpansion) {
+            console.log(`[Reconstruction] Routing project ${project.id} through Universal Expansion (coherence system)`);
+            const aggressiveness = (fidelityLevel === 'conservative') ? 'conservative' : 'aggressive';
+            
+            const result = await universalExpand({
+              text,
+              customInstructions: effectiveInstructions,
+              aggressiveness,
+            });
+            
+            await storage.updateReconstructionProject(project.id, {
+              reconstructedText: result.expandedText,
+              status: 'completed'
+            });
+            
+            console.log(`[Reconstruction] Completed project ${project.id} via Universal Expansion: ${result.outputWordCount} words`);
+          } else {
+            console.log(`[Reconstruction] Routing project ${project.id} through Cross-Chunk Coherence`);
+            const { crossChunkReconstruct } = await import('./services/crossChunkCoherence');
+            
+            const result = await crossChunkReconstruct(
+              text,
+              undefined,
+              undefined,
+              effectiveInstructions
+            );
+            
+            await storage.updateReconstructionProject(project.id, {
+              reconstructedText: result.reconstructedText,
+              status: 'completed'
+            });
+            
+            console.log(`[Reconstruction] Completed project ${project.id} via CC: ${result.reconstructedText.split(/\s+/).length} words`);
+          }
+          
+          if (userId) {
+            const completedProject = await storage.getReconstructionProject(project.id);
+            if (completedProject?.status === 'completed' && completedProject.reconstructedText) {
+              const user = req.user as any;
+              const { checkAndDeductCredits } = await import('./services/creditManager');
+              const tokensGenerated = completedProject.reconstructedText.split(/\s+/).length * 1.3;
+              const provider = llmProvider || 'anthropic';
+              await checkAndDeductCredits(userId, user?.username, provider, Math.ceil(tokensGenerated));
+            }
+          }
         } catch (error: any) {
           console.error(`[Reconstruction] Failed project ${project.id}:`, error.message);
           await storage.updateReconstructionProject(project.id, {
