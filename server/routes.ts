@@ -1636,148 +1636,89 @@ ${externalKnowledge}`;
         try {
           let effectiveInstructions = customInstructions || '';
           const parsedTarget = targetWordCount ? parseInt(targetWordCount) : 0;
-          let userExplicitlyRequestedExpansion = false;
           
-          const { hasExpansionInstructions, universalExpand } = await import('./services/universalExpansion');
+          const { universalExpand } = await import('./services/universalExpansion');
+          const { broadcastGenerationChunk } = await import('./services/ccStreamingService');
           
           if (parsedTarget > 0) {
-            userExplicitlyRequestedExpansion = true;
             const hasExpandDirective = /expand\s*(to|into)?\s*\d+/i.test(effectiveInstructions);
             if (!hasExpandDirective) {
               effectiveInstructions = `EXPAND TO ${parsedTarget} WORDS. ${effectiveInstructions}`;
             }
-          } else if (effectiveInstructions.trim() && hasExpansionInstructions(effectiveInstructions)) {
-            userExplicitlyRequestedExpansion = true;
-          } else if (!effectiveInstructions.trim()) {
-            effectiveInstructions = "Write the maximally coherent scholarly version. NO PUFFERY. NO HEDGING. Every word must carry meaning.";
+          } else {
+            const autoTarget = Math.max(5000, inputWordCount * 3);
+            const hasExpandDirective = /expand\s*(to|into)?\s*\d+/i.test(effectiveInstructions);
+            if (!hasExpandDirective) {
+              effectiveInstructions = `EXPAND TO ${autoTarget} WORDS. ${effectiveInstructions || 'Write the maximally coherent scholarly version. NO PUFFERY. NO HEDGING. Every word must carry meaning.'}`;
+            }
+            console.log(`[Reconstruction] Auto-calculated expansion target: ${autoTarget} words (input: ${inputWordCount} words)`);
           }
-          
-          const { broadcastGenerationChunk } = await import('./services/ccStreamingService');
           
           broadcastGenerationChunk({
             type: 'progress',
             projectId: project.id,
             stage: 'initializing',
-            sectionTitle: 'Starting generation...',
+            sectionTitle: 'Starting coherence-based generation...',
             progress: 1
           });
           
-          if (userExplicitlyRequestedExpansion) {
-            console.log(`[Reconstruction] Routing project ${project.id} through Universal Expansion (coherence system)`);
-            const aggressiveness = (fidelityLevel === 'conservative') ? 'conservative' : 'aggressive';
-            
-            let sectionsCompleted = 0;
-            let totalSections = 0;
-            let partialText = '';
-            
-            const result = await universalExpand({
-              text,
-              customInstructions: effectiveInstructions,
-              aggressiveness,
-              onChunk: (chunk) => {
-                console.log(`[DW-Stream] Broadcasting: ${chunk.type} - ${chunk.message || chunk.sectionTitle || 'progress'}`);
-                broadcastGenerationChunk({
-                  type: chunk.type,
-                  projectId: project.id,
-                  sectionTitle: chunk.sectionTitle,
-                  chunkText: chunk.type === 'outline' ? (chunk as any).outline : chunk.sectionContent,
-                  sectionIndex: chunk.sectionIndex,
-                  totalChunks: chunk.totalSections,
-                  progress: chunk.progress,
-                  stage: chunk.type,
-                  wordCount: chunk.wordCount,
-                  totalWordCount: chunk.totalWordCount
-                });
+          console.log(`[Reconstruction] Routing project ${project.id} through Universal Expansion (coherence system)`);
+          const aggressiveness = (fidelityLevel === 'conservative') ? 'conservative' : 'aggressive';
+          
+          let sectionsCompleted = 0;
+          let totalSections = 0;
+          let partialText = '';
+          
+          const result = await universalExpand({
+            text,
+            customInstructions: effectiveInstructions,
+            aggressiveness,
+            onChunk: (chunk) => {
+              console.log(`[DW-Stream] Broadcasting: ${chunk.type} - ${chunk.message || chunk.sectionTitle || 'progress'}`);
+              broadcastGenerationChunk({
+                type: chunk.type,
+                projectId: project.id,
+                sectionTitle: chunk.sectionTitle,
+                chunkText: chunk.type === 'outline' ? (chunk as any).outline : chunk.sectionContent,
+                sectionIndex: chunk.sectionIndex,
+                totalChunks: chunk.totalSections,
+                progress: chunk.progress,
+                stage: chunk.type,
+                wordCount: chunk.wordCount,
+                totalWordCount: chunk.totalWordCount
+              });
+              
+              if (chunk.type === 'outline') {
+                totalSections = chunk.totalSections || 15;
+              } else if (chunk.type === 'section_complete' && chunk.sectionContent) {
+                sectionsCompleted++;
+                if (chunk.totalSections) totalSections = chunk.totalSections;
+                partialText += (partialText ? '\n\n' : '') + chunk.sectionContent;
                 
-                if (chunk.type === 'outline') {
-                  totalSections = chunk.totalSections || 15;
-                } else if (chunk.type === 'section_complete' && chunk.sectionContent) {
-                  sectionsCompleted++;
-                  if (chunk.totalSections) totalSections = chunk.totalSections;
-                  partialText += (partialText ? '\n\n' : '') + chunk.sectionContent;
-                  
-                  if (sectionsCompleted % 3 === 0) {
-                    storage.updateReconstructionProject(project.id, {
-                      reconstructedText: partialText,
-                      status: 'processing'
-                    }).catch(() => {});
-                  }
+                if (sectionsCompleted % 3 === 0) {
+                  storage.updateReconstructionProject(project.id, {
+                    reconstructedText: partialText,
+                    status: 'processing'
+                  }).catch(() => {});
                 }
-              },
-            });
-            
-            await storage.updateReconstructionProject(project.id, {
-              reconstructedText: result.expandedText,
-              status: 'completed'
-            });
-            
-            const finalWordCount = result.expandedText.trim().split(/\s+/).length;
-            broadcastGenerationChunk({
-              type: 'complete',
-              projectId: project.id,
-              totalWordCount: finalWordCount,
-              progress: 100
-            });
-            
-            console.log(`[Reconstruction] Completed project ${project.id} via Universal Expansion: ${result.outputWordCount} words`);
-          } else {
-            console.log(`[Reconstruction] Routing project ${project.id} through Cross-Chunk Coherence`);
-            const { crossChunkReconstruct } = await import('./services/crossChunkCoherence');
-            
-            broadcastGenerationChunk({
-              type: 'progress',
-              projectId: project.id,
-              stage: 'skeleton_extraction',
-              sectionTitle: 'Extracting document structure...',
-              progress: 5
-            });
-            
-            let ccPartialText = '';
-            let ccTotalWords = 0;
-            
-            const result = await crossChunkReconstruct(
-              text,
-              undefined,
-              undefined,
-              effectiveInstructions,
-              undefined,
-              (chunkIndex: number, totalChunks: number, chunkText: string) => {
-                ccPartialText += (ccPartialText ? '\n\n' : '') + chunkText;
-                ccTotalWords = ccPartialText.trim().split(/\s+/).length;
-                const progressPct = Math.round(10 + ((chunkIndex + 1) / totalChunks) * 85);
-                broadcastGenerationChunk({
-                  type: 'section_complete',
-                  projectId: project.id,
-                  sectionTitle: `Chunk ${chunkIndex + 1} of ${totalChunks}`,
-                  chunkText: chunkText,
-                  sectionIndex: chunkIndex,
-                  totalChunks: totalChunks,
-                  progress: progressPct,
-                  totalWordCount: ccTotalWords
-                });
-                
-                storage.updateReconstructionProject(project.id, {
-                  reconstructedText: ccPartialText,
-                  status: 'processing'
-                }).catch(() => {});
               }
-            );
-            
-            await storage.updateReconstructionProject(project.id, {
-              reconstructedText: result.reconstructedText,
-              status: 'completed'
-            });
-            
-            const finalWordCount = result.reconstructedText.trim().split(/\s+/).length;
-            broadcastGenerationChunk({
-              type: 'complete',
-              projectId: project.id,
-              totalWordCount: finalWordCount,
-              progress: 100
-            });
-            
-            console.log(`[Reconstruction] Completed project ${project.id} via CC: ${finalWordCount} words`);
-          }
+            },
+          });
+          
+          await storage.updateReconstructionProject(project.id, {
+            reconstructedText: result.expandedText,
+            status: 'completed'
+          });
+          
+          const finalWordCount = result.expandedText.trim().split(/\s+/).length;
+          broadcastGenerationChunk({
+            type: 'complete',
+            projectId: project.id,
+            totalWordCount: finalWordCount,
+            progress: 100
+          });
+          
+          console.log(`[Reconstruction] Completed project ${project.id} via Universal Expansion: ${result.outputWordCount} words`);
           
           if (userId) {
             const completedProject = await storage.getReconstructionProject(project.id);
