@@ -1,7 +1,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Send, ArrowRight, MessageSquare, Zap, Brain, FileEdit, MessageSquareWarning, ShieldCheck } from "lucide-react";
+import { Send, ArrowRight, MessageSquare, Zap, Brain, FileEdit, MessageSquareWarning, ShieldCheck, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface SendToButtonProps {
@@ -12,6 +12,7 @@ interface SendToButtonProps {
   onSendToValidator?: (text: string) => void;
   onSendToObjections?: (text: string) => void;
   onSendToObjectionProof?: (text: string) => void;
+  onSendToRefiner?: (text: string) => void;
   variant?: "default" | "secondary" | "outline" | "ghost";
   size?: "default" | "sm" | "lg";
   className?: string;
@@ -25,6 +26,7 @@ export const SendToButton: React.FC<SendToButtonProps> = ({
   onSendToValidator,
   onSendToObjections,
   onSendToObjectionProof,
+  onSendToRefiner,
   variant = "outline", 
   size = "sm",
   className = ""
@@ -77,6 +79,12 @@ export const SendToButton: React.FC<SendToButtonProps> = ({
       icon: ShieldCheck, 
       callback: onSendToObjectionProof,
       available: !!onSendToObjectionProof 
+    },
+    { 
+      label: "Signal Refiner", 
+      icon: Filter, 
+      callback: onSendToRefiner,
+      available: !!onSendToRefiner 
     }
   ].filter(dest => dest.available);
 
@@ -102,7 +110,7 @@ export const SendToButton: React.FC<SendToButtonProps> = ({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant={variant} size={size} className={`gap-2 ${className}`}>
+        <Button variant={variant} size={size} className={`gap-2 ${className}`} data-testid="button-send-to-menu">
           <Send className="h-4 w-4" />
           Send To
           <ArrowRight className="h-3 w-3" />
@@ -114,6 +122,7 @@ export const SendToButton: React.FC<SendToButtonProps> = ({
             key={dest.label}
             onClick={() => handleSendTo(dest.label, dest.callback)}
             className="cursor-pointer"
+            data-testid={`menuitem-send-to-${dest.label.toLowerCase().replace(/\s+/g, '-')}`}
           >
             <dest.icon className="h-4 w-4 mr-2" />
             {dest.label}

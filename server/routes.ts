@@ -6400,5 +6400,94 @@ Write a complete, well-structured document. Ensure:
     }
   });
 
+  app.post("/api/signal-refiner", async (req: Request, res: Response) => {
+    try {
+      const { text, provider = 'zhi1', customInstructions = '' } = req.body;
+
+      if (!text || !text.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Text is required for signal refinement"
+        });
+      }
+
+      const wordCount = text.trim().split(/\s+/).filter((w: string) => w).length;
+      if (wordCount < 50) {
+        return res.status(400).json({
+          success: false,
+          message: "Text must be at least 50 words for signal refinement"
+        });
+      }
+
+      if (wordCount > 100000) {
+        return res.status(400).json({
+          success: false,
+          message: "Text exceeds maximum of 100,000 words"
+        });
+      }
+
+      const actualProvider = mapZhiToProvider(provider);
+
+      const hasCredits = req.user ? await hasUnlimitedCredits(req.user.username) || (await storage.getTotalUserCredits(req.user.id)) > 0 : false;
+
+      if (hasCredits && req.user) {
+        const creditResult = await checkAndDeductCredits(
+          req.user.id,
+          req.user.username,
+          actualProvider
+        );
+        if (!creditResult.success) {
+          return res.status(402).json({
+            success: false,
+            message: creditResult.error
+          });
+        }
+      }
+
+      const { refineSignal } = await import('./services/signalRefiner');
+      const result = await refineSignal(text, actualProvider, customInstructions);
+
+      let finalOutput = result.output;
+      let wasTruncated = false;
+
+      if (!hasCredits) {
+        const truncateResult = truncateToWordLimit(finalOutput, FREEMIUM_LIMITS.refiner);
+        if (truncateResult.wasTruncated) {
+          finalOutput = truncateResult.text;
+          wasTruncated = true;
+          console.log(`[FREEMIUM] Refiner output truncated from ${truncateResult.originalWords} to ${FREEMIUM_LIMITS.refiner} words`);
+        }
+      }
+
+      if (hasCredits && req.user) {
+        const outputTokens = Math.round(finalOutput.length / 4);
+        await checkAndDeductCredits(
+          req.user.id,
+          req.user.username,
+          actualProvider,
+          outputTokens
+        );
+      }
+
+      res.json({
+        success: true,
+        output: finalOutput,
+        inputWords: result.inputWords,
+        outputWords: result.outputWords,
+        chunksProcessed: result.chunksProcessed,
+        reductionPercent: result.reductionPercent,
+        wasTruncated,
+        freemiumLimit: !hasCredits ? FREEMIUM_LIMITS.refiner : null
+      });
+
+    } catch (error: any) {
+      console.error("[Signal Refiner] Error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Signal refinement failed"
+      });
+    }
+  });
+
   return app;
 }

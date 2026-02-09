@@ -25,7 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, ShieldCheck, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning, Circle, ArrowRight, Settings, ScanText, X, Play, Eye, Film, Send } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, ShieldCheck, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, FileCode, Search, Copy, CheckCircle, Target, ChevronUp, ChevronDown, MessageSquareWarning, Circle, ArrowRight, Settings, ScanText, X, Play, Eye, Film, Send, Filter } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
@@ -458,6 +458,16 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [screenplayWordCount, setScreenplayWordCount] = useState<number | null>(null);
   const [screenplayStructure, setScreenplayStructure] = useState<{actOneWords: number; actTwoWords: number; actThreeWords: number} | null>(null);
   const [screenplayProcessingTime, setScreenplayProcessingTime] = useState<number | null>(null);
+
+  // Signal Refiner State
+  const [refinerInputText, setRefinerInputText] = useState("");
+  const [refinerOutput, setRefinerOutput] = useState("");
+  const [refinerLoading, setRefinerLoading] = useState(false);
+  const [refinerCustomInstructions, setRefinerCustomInstructions] = useState("");
+  const [refinerInputWords, setRefinerInputWords] = useState(0);
+  const [refinerOutputWords, setRefinerOutputWords] = useState(0);
+  const [refinerReductionPercent, setRefinerReductionPercent] = useState(0);
+  const [refinerDragOver, setRefinerDragOver] = useState(false);
   
   // Coherence Meter State
   const [coherenceInputText, setCoherenceInputText] = useState("");
@@ -1438,6 +1448,18 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     });
   };
 
+  const handleSendToRefiner = (text: string) => {
+    setRefinerInputText(text);
+    toast({
+      title: "Text sent to Signal Refiner",
+      description: "Text has been placed in the Signal Refiner input"
+    });
+    setTimeout(() => {
+      const el = document.getElementById('signal-refiner-section');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
+
   const handleSendToChat = (text: string) => {
     // This will be handled by the ChatDialog component
     // For now, we can show a notification that the text will be available to chat
@@ -1448,6 +1470,56 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   };
 
   // Screenplay Generator Handler
+  const handleSignalRefine = async () => {
+    if (!refinerInputText.trim()) {
+      toast({ title: "Error", description: "Please provide text to refine", variant: "destructive" });
+      return;
+    }
+    const wordCount = refinerInputText.trim().split(/\s+/).filter((w: string) => w).length;
+    if (wordCount < 50) {
+      toast({ title: "Error", description: "Text must be at least 50 words for signal refinement", variant: "destructive" });
+      return;
+    }
+
+    setRefinerLoading(true);
+    setRefinerOutput("");
+    setRefinerInputWords(0);
+    setRefinerOutputWords(0);
+    setRefinerReductionPercent(0);
+
+    try {
+      const response = await fetch('/api/signal-refiner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: refinerInputText,
+          provider: selectedProvider,
+          customInstructions: refinerCustomInstructions,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Signal refinement failed');
+      }
+
+      setRefinerOutput(data.output);
+      setRefinerInputWords(data.inputWords);
+      setRefinerOutputWords(data.outputWords);
+      setRefinerReductionPercent(data.reductionPercent);
+
+      toast({
+        title: "Signal Refinement Complete",
+        description: `${data.inputWords.toLocaleString()} → ${data.outputWords.toLocaleString()} words (${data.reductionPercent}% reduction)`
+      });
+    } catch (error: any) {
+      console.error('[SignalRefiner] Error:', error);
+      toast({ title: "Error", description: error.message || "Signal refinement failed", variant: "destructive" });
+    } finally {
+      setRefinerLoading(false);
+    }
+  };
+
   const handleGenerateScreenplay = async () => {
     console.log("[Screenplay] Button clicked, input length:", screenplayInputText.length);
     
@@ -9977,6 +10049,15 @@ Generated on: ${new Date().toLocaleString()}`;
                   <Download className="w-4 h-4 mr-2" /> Download
                 </Button>
                 <CopyButton text={separateSkeletonMetadata(dwOutput).cleanText || dwOutput} />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSendToRefiner(separateSkeletonMetadata(dwOutput).cleanText || dwOutput)}
+                  className="gap-1 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-600 dark:text-amber-300 dark:hover:bg-amber-900/20"
+                  data-testid="button-send-dw-to-refiner"
+                >
+                  <Filter className="w-4 h-4" /> Send to Refiner
+                </Button>
                 <Button onClick={handleDwClear} variant="outline" size="sm" data-testid="button-clear-dw">
                   <Trash2 className="w-4 h-4 mr-1" /> Clear
                 </Button>
@@ -10067,6 +10148,175 @@ Generated on: ${new Date().toLocaleString()}`;
         onClose={() => { setDwStreamingModalOpen(false); setDwStreamingStartNew(false); }}
         onComplete={(finalText: string) => { if (finalText) setDwOutput(generateTableOfContents(stripMarkdown(finalText))); }}
       />
+
+      {/* ==================== SIGNAL REFINER SECTION ==================== */}
+      <div id="signal-refiner-section" className="mt-10 mb-8 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 p-6 rounded-xl border-2 border-amber-300 dark:border-amber-700">
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold text-amber-900 dark:text-amber-100 mb-2 flex items-center justify-center gap-3">
+            <Filter className="w-7 h-7 text-amber-600" />
+            SIGNAL REFINER
+          </h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Maximize signal-to-noise ratio — eliminate repetitions, tighten claims, cut bloat
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-amber-900 dark:text-amber-100 mb-2">
+              Text to Refine
+            </label>
+            <div
+              className={`relative ${refinerDragOver ? 'ring-2 ring-amber-400' : ''}`}
+              onDragOver={(e) => { e.preventDefault(); setRefinerDragOver(true); }}
+              onDragLeave={() => setRefinerDragOver(false)}
+              onDrop={async (e) => {
+                e.preventDefault();
+                setRefinerDragOver(false);
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                  const file = files[0];
+                  if (file.type === 'text/plain' || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+                    const text = await file.text();
+                    setRefinerInputText(text);
+                    toast({ title: "File loaded", description: `${file.name} loaded into Signal Refiner` });
+                  }
+                }
+              }}
+            >
+              <Textarea
+                value={refinerInputText}
+                onChange={(e) => setRefinerInputText(e.target.value)}
+                placeholder="Paste text here, or drag and drop a .txt file. You can also send output from the Dissertation Wizard directly."
+                className="min-h-[200px] font-mono text-sm"
+                data-testid="textarea-refiner-input"
+              />
+            </div>
+            {refinerInputText.trim() && (
+              <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                {refinerInputText.trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()} words
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-amber-900 dark:text-amber-100 mb-2">
+              Custom Instructions (optional)
+            </label>
+            <Textarea
+              value={refinerCustomInstructions}
+              onChange={(e) => setRefinerCustomInstructions(e.target.value)}
+              placeholder="e.g., 'Preserve all footnote references', 'Keep technical terminology intact', 'Focus on removing repetition in sections 3-5'"
+              className="min-h-[80px] text-sm"
+              data-testid="textarea-refiner-instructions"
+            />
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button
+              onClick={handleSignalRefine}
+              disabled={refinerLoading || !refinerInputText.trim()}
+              className="bg-amber-600 text-white"
+              data-testid="button-refine-signal"
+            >
+              {refinerLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Refining...
+                </>
+              ) : (
+                <>
+                  <Filter className="w-4 h-4 mr-2" />
+                  Refine Signal
+                </>
+              )}
+            </Button>
+
+            {refinerInputText.trim() && !refinerLoading && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setRefinerInputText(""); setRefinerOutput(""); setRefinerCustomInstructions(""); setRefinerInputWords(0); setRefinerOutputWords(0); setRefinerReductionPercent(0); }}
+                className="text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+                data-testid="button-refiner-clear"
+              >
+                <Trash2 className="w-4 h-4 mr-1" /> Clear
+              </Button>
+            )}
+          </div>
+
+          {refinerLoading && (
+            <div className="bg-amber-100 dark:bg-amber-900/30 p-4 rounded-lg border border-amber-200 dark:border-amber-700">
+              <div className="flex items-center gap-3">
+                <Loader2 className="w-5 h-5 animate-spin text-amber-600" />
+                <div>
+                  <p className="font-medium text-amber-900 dark:text-amber-100">Processing signal refinement...</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">Analyzing structure, eliminating repetitions, tightening claims</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {refinerOutput && (
+            <div className="bg-white dark:bg-gray-800 p-5 rounded-lg border-2 border-amber-300 dark:border-amber-600">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <h3 className="text-lg font-semibold flex items-center gap-2 text-amber-900 dark:text-amber-100">
+                  <CheckCircle className="w-5 h-5 text-amber-600" />
+                  Refined Output
+                </h3>
+                <div className="flex gap-2 flex-wrap">
+                  <Button variant="outline" size="sm"
+                    onClick={() => {
+                      const blob = new Blob([refinerOutput], { type: 'text/plain' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url; a.download = 'refined-output.txt'; a.click();
+                      URL.revokeObjectURL(url);
+                      toast({ title: "Downloaded", description: "Refined output saved" });
+                    }}
+                    data-testid="button-download-refiner-output">
+                    <Download className="w-4 h-4 mr-2" /> Download
+                  </Button>
+                  <CopyButton text={refinerOutput} />
+                  <SendToButton
+                    text={refinerOutput}
+                    onSendToHumanizer={handleSendToHumanizer}
+                    onSendToIntelligence={handleSendToIntelligence}
+                    onSendToChat={handleSendToChat}
+                    onSendToValidator={(text: string) => setValidatorInputText(text)}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-amber-700 dark:text-amber-300">Input:</span>
+                  <span className="text-lg font-bold text-amber-900 dark:text-amber-100">{refinerInputWords.toLocaleString()}</span>
+                  <span className="text-xs text-gray-500">words</span>
+                </div>
+                <ArrowRight className="w-4 h-4 text-amber-500" />
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-amber-700 dark:text-amber-300">Output:</span>
+                  <span className="text-lg font-bold text-amber-900 dark:text-amber-100">{refinerOutputWords.toLocaleString()}</span>
+                  <span className="text-xs text-gray-500">words</span>
+                </div>
+                <Badge variant="secondary" className="bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100">
+                  {refinerReductionPercent}% reduction
+                </Badge>
+              </div>
+
+              <TextStats text={refinerOutput} showAiDetect={true} variant="prominent" />
+
+              <Textarea
+                value={refinerOutput}
+                readOnly
+                className="min-h-[300px] font-mono text-sm mt-4"
+                data-testid="textarea-refiner-output"
+              />
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Chat Dialog - Always visible below everything */}
       <ChatDialog 

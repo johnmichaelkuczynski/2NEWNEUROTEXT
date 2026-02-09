@@ -100,6 +100,7 @@ export const FREEMIUM_LIMITS = {
   document: 750,
   outline: 750,
   coherence: 300,
+  refiner: 500,
 };
 
 // Helper to truncate text to word limit
