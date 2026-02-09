@@ -175,6 +175,7 @@ let wss: WebSocketServer | null = null;
 // Export function to broadcast chunk to all connected generation clients
 export function broadcastGenerationChunk(message: {
   type: string;
+  projectId?: number;
   sessionId?: number;
   chunkIndex?: number;
   sectionIndex?: number;

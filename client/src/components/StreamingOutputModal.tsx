@@ -10,6 +10,7 @@ import { PaywallOverlay } from "./PaywallOverlay";
 
 interface StreamChunk {
   type: 'section_complete' | 'progress' | 'outline' | 'complete';
+  projectId?: number;
   sectionTitle?: string;
   chunkText?: string;
   sectionIndex?: number;
@@ -25,9 +26,10 @@ interface StreamingOutputModalProps {
   onClose: () => void;
   onComplete?: (finalText: string) => void;
   startNew?: boolean;
+  projectId?: number | null;
 }
 
-export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = false }: StreamingOutputModalProps) {
+export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = false, projectId }: StreamingOutputModalProps) {
   const [content, setContent] = useState<string>('');
   const [progress, setProgress] = useState(0);
   const [currentSection, setCurrentSection] = useState<string>('');
@@ -46,8 +48,16 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
   const hasStartedRef = useRef(false);
   const wordCountRef = useRef(0);
   const panelRef = useRef<HTMLDivElement>(null);
+  const projectIdRef = useRef<number | null>(null);
+  const pollFallbackRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsConnectedRef = useRef(false);
+  const receivedAnyDataRef = useRef(false);
   const { toast } = useToast();
   const { hasCredits } = useCredits();
+
+  useEffect(() => {
+    projectIdRef.current = projectId ?? null;
+  }, [projectId]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (panelRef.current) {
@@ -111,6 +121,8 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
     }
     
     setCurrentSection('Connecting...');
+    wsConnectedRef.current = false;
+    receivedAnyDataRef.current = false;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/cc-stream`;
@@ -119,21 +131,116 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
+    const startPollingFallback = () => {
+      if (pollFallbackRef.current) return;
+      console.log('[StreamingModal] Starting polling fallback');
+      pollFallbackRef.current = setInterval(async () => {
+        const pid = projectIdRef.current;
+        if (!pid) return;
+        try {
+          const res = await fetch(`/api/reconstruction/${pid}`);
+          if (!res.ok) return;
+          const proj = await res.json();
+          if (proj.status === 'completed' && proj.reconstructedText) {
+            setIsComplete(true);
+            setProgress(100);
+            setCurrentSection('Generation complete!');
+            const wc = proj.reconstructedText.trim().split(/\s+/).length;
+            wordCountRef.current = wc;
+            setWordCount(wc);
+            if (!contentRef.current) {
+              contentRef.current = proj.reconstructedText;
+              setContent(proj.reconstructedText);
+            }
+            if (onComplete) {
+              onComplete(contentRef.current || proj.reconstructedText);
+            }
+            if (pollFallbackRef.current) {
+              clearInterval(pollFallbackRef.current);
+              pollFallbackRef.current = null;
+            }
+          } else if (proj.status === 'failed') {
+            setCurrentSection('Generation failed.');
+            if (pollFallbackRef.current) {
+              clearInterval(pollFallbackRef.current);
+              pollFallbackRef.current = null;
+            }
+          } else if (proj.status === 'processing' && proj.reconstructedText) {
+            const wc = proj.reconstructedText.trim().split(/\s+/).length;
+            wordCountRef.current = wc;
+            setWordCount(wc);
+            setCurrentSection(`Processing... ${wc.toLocaleString()} words generated so far`);
+            if (!contentRef.current || contentRef.current.length < proj.reconstructedText.length) {
+              contentRef.current = proj.reconstructedText;
+              setContent(proj.reconstructedText);
+            }
+          } else {
+            setCurrentSection('Processing... (waiting for streaming data)');
+            setProgress(prev => Math.min(prev + 2, 15));
+          }
+        } catch (e) {
+          console.error('[StreamingModal] Polling fallback error:', e);
+        }
+      }, 8000);
+    };
+
     ws.onopen = () => {
       console.log('[StreamingModal] WebSocket connected');
+      wsConnectedRef.current = true;
       setCurrentSection('Waiting for generation to start...');
+      setTimeout(() => {
+        if (!receivedAnyDataRef.current) {
+          startPollingFallback();
+        }
+      }, 5000);
+    };
+
+    ws.onerror = () => {
+      console.warn('[StreamingModal] WebSocket error, starting polling fallback');
+      startPollingFallback();
+    };
+
+    ws.onclose = () => {
+      wsConnectedRef.current = false;
+      if (!receivedAnyDataRef.current) {
+        startPollingFallback();
+      }
     };
 
     ws.onmessage = (event) => {
       try {
         const data: StreamChunk = JSON.parse(event.data);
+        
+        if (data.projectId && projectIdRef.current && data.projectId !== projectIdRef.current) {
+          return;
+        }
+        
+        receivedAnyDataRef.current = true;
         console.log('[StreamingModal] Received:', data.type);
 
         switch (data.type) {
+          case 'progress':
+            if (data.sectionTitle) {
+              setCurrentSection(data.sectionTitle);
+            }
+            if (data.progress !== undefined) {
+              setProgress(data.progress);
+            }
+            break;
+            
           case 'outline':
-            setCurrentSection('Outline generated, starting sections...');
+            setCurrentSection('Skeleton/outline generated, starting sections...');
             if (data.totalChunks) {
               setTotalSections(data.totalChunks);
+            }
+            if (data.chunkText) {
+              setContent(prev => {
+                const outlineHeader = '=== DOCUMENT SKELETON ===\n\n';
+                const newContent = outlineHeader + data.chunkText + '\n\n=== GENERATING SECTIONS ===\n';
+                contentRef.current = newContent;
+                return newContent;
+              });
+              setTimeout(scrollToBottom, 100);
             }
             break;
 
@@ -172,6 +279,13 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
               wordCountRef.current = data.totalWordCount;
               setWordCount(data.totalWordCount);
             }
+            if (onComplete && contentRef.current) {
+              onComplete(contentRef.current);
+            }
+            if (pollFallbackRef.current) {
+              clearInterval(pollFallbackRef.current);
+              pollFallbackRef.current = null;
+            }
             toast({
               title: "Generation Complete",
               description: `${data.totalWordCount?.toLocaleString() || wordCountRef.current.toLocaleString()} words generated successfully.`,
@@ -183,22 +297,17 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
       }
     };
 
-    ws.onerror = (error) => {
-      console.error('[StreamingModal] WebSocket error:', error);
-      setCurrentSection('Connection error - check console');
-    };
-
-    ws.onclose = () => {
-      console.log('[StreamingModal] WebSocket closed');
-    };
-
     return () => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
       wsRef.current = null;
+      if (pollFallbackRef.current) {
+        clearInterval(pollFallbackRef.current);
+        pollFallbackRef.current = null;
+      }
     };
-  }, [isOpen, toast, scrollToBottom, startNew, clearContent]);
+  }, [isOpen, toast, scrollToBottom, startNew, clearContent, onComplete]);
 
   useEffect(() => {
     if (!startNew) {

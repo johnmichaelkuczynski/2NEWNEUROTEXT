@@ -1652,6 +1652,16 @@ ${externalKnowledge}`;
             effectiveInstructions = "Write the maximally coherent scholarly version. NO PUFFERY. NO HEDGING. Every word must carry meaning.";
           }
           
+          const { broadcastGenerationChunk } = await import('./services/ccStreamingService');
+          
+          broadcastGenerationChunk({
+            type: 'progress',
+            projectId: project.id,
+            stage: 'initializing',
+            sectionTitle: 'Starting generation...',
+            progress: 1
+          });
+          
           if (userExplicitlyRequestedExpansion) {
             console.log(`[Reconstruction] Routing project ${project.id} through Universal Expansion (coherence system)`);
             const aggressiveness = (fidelityLevel === 'conservative') ? 'conservative' : 'aggressive';
@@ -1665,23 +1675,33 @@ ${externalKnowledge}`;
               customInstructions: effectiveInstructions,
               aggressiveness,
               onChunk: (chunk) => {
+                console.log(`[DW-Stream] Broadcasting: ${chunk.type} - ${chunk.message || chunk.sectionTitle || 'progress'}`);
+                broadcastGenerationChunk({
+                  type: chunk.type,
+                  projectId: project.id,
+                  sectionTitle: chunk.sectionTitle,
+                  chunkText: chunk.type === 'outline' ? (chunk as any).outline : chunk.sectionContent,
+                  sectionIndex: chunk.sectionIndex,
+                  totalChunks: chunk.totalSections,
+                  progress: chunk.progress,
+                  stage: chunk.type,
+                  wordCount: chunk.wordCount,
+                  totalWordCount: chunk.totalWordCount
+                });
+                
                 if (chunk.type === 'outline') {
                   totalSections = chunk.totalSections || 15;
-                  storage.updateReconstructionProject(project.id, {
-                    reconstructedText: `[GENERATING: 0/${totalSections} sections]\n\nOutline generated. Generating content...`,
-                  });
                 } else if (chunk.type === 'section_complete' && chunk.sectionContent) {
                   sectionsCompleted++;
                   if (chunk.totalSections) totalSections = chunk.totalSections;
                   partialText += (partialText ? '\n\n' : '') + chunk.sectionContent;
-                  const wordsSoFar = partialText.trim().split(/\s+/).length;
-                  storage.updateReconstructionProject(project.id, {
-                    reconstructedText: `[GENERATING: ${sectionsCompleted}/${totalSections} sections | ${wordsSoFar.toLocaleString()} words so far]\n\n${partialText}`,
-                  });
-                } else if (chunk.type === 'progress' && chunk.message) {
-                  storage.updateReconstructionProject(project.id, {
-                    reconstructedText: `[GENERATING: ${chunk.message}]`,
-                  });
+                  
+                  if (sectionsCompleted % 3 === 0) {
+                    storage.updateReconstructionProject(project.id, {
+                      reconstructedText: partialText,
+                      status: 'processing'
+                    }).catch(() => {});
+                  }
                 }
               },
             });
@@ -1691,16 +1711,56 @@ ${externalKnowledge}`;
               status: 'completed'
             });
             
+            const finalWordCount = result.expandedText.trim().split(/\s+/).length;
+            broadcastGenerationChunk({
+              type: 'complete',
+              projectId: project.id,
+              totalWordCount: finalWordCount,
+              progress: 100
+            });
+            
             console.log(`[Reconstruction] Completed project ${project.id} via Universal Expansion: ${result.outputWordCount} words`);
           } else {
             console.log(`[Reconstruction] Routing project ${project.id} through Cross-Chunk Coherence`);
             const { crossChunkReconstruct } = await import('./services/crossChunkCoherence');
             
+            broadcastGenerationChunk({
+              type: 'progress',
+              projectId: project.id,
+              stage: 'skeleton_extraction',
+              sectionTitle: 'Extracting document structure...',
+              progress: 5
+            });
+            
+            let ccPartialText = '';
+            let ccTotalWords = 0;
+            
             const result = await crossChunkReconstruct(
               text,
               undefined,
               undefined,
-              effectiveInstructions
+              effectiveInstructions,
+              undefined,
+              (chunkIndex: number, totalChunks: number, chunkText: string) => {
+                ccPartialText += (ccPartialText ? '\n\n' : '') + chunkText;
+                ccTotalWords = ccPartialText.trim().split(/\s+/).length;
+                const progressPct = Math.round(10 + ((chunkIndex + 1) / totalChunks) * 85);
+                broadcastGenerationChunk({
+                  type: 'section_complete',
+                  projectId: project.id,
+                  sectionTitle: `Chunk ${chunkIndex + 1} of ${totalChunks}`,
+                  chunkText: chunkText,
+                  sectionIndex: chunkIndex,
+                  totalChunks: totalChunks,
+                  progress: progressPct,
+                  totalWordCount: ccTotalWords
+                });
+                
+                storage.updateReconstructionProject(project.id, {
+                  reconstructedText: ccPartialText,
+                  status: 'processing'
+                }).catch(() => {});
+              }
             );
             
             await storage.updateReconstructionProject(project.id, {
@@ -1708,7 +1768,15 @@ ${externalKnowledge}`;
               status: 'completed'
             });
             
-            console.log(`[Reconstruction] Completed project ${project.id} via CC: ${result.reconstructedText.split(/\s+/).length} words`);
+            const finalWordCount = result.reconstructedText.trim().split(/\s+/).length;
+            broadcastGenerationChunk({
+              type: 'complete',
+              projectId: project.id,
+              totalWordCount: finalWordCount,
+              progress: 100
+            });
+            
+            console.log(`[Reconstruction] Completed project ${project.id} via CC: ${finalWordCount} words`);
           }
           
           if (userId) {

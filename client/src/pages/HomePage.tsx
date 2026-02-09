@@ -1692,6 +1692,9 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setDwProgress("Starting coherence-based reconstruction...");
     setValidatorOutput("");
     
+    setStreamingStartNew(true);
+    setStreamingModalOpen(true);
+    
     try {
       const response = await fetch("/api/reconstruction/start", {
         method: "POST",
@@ -1713,12 +1716,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       
       const project = await response.json();
       setDwProjectId(project.id);
-      setDwProgress("Processing through coherence system... This may take 1-5 minutes for large documents.");
-      
-      toast({
-        title: "Coherence Processing Started",
-        description: "Your text is being processed through the multi-pass coherence system. Results will appear when complete.",
-      });
+      setDwProgress("Processing through coherence system...");
       
       if (dwPollRef.current) clearInterval(dwPollRef.current);
       
@@ -1759,20 +1757,6 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
               description: "An error occurred during processing.",
               variant: "destructive",
             });
-          } else if (updated.status === 'processing' && updated.reconstructedText) {
-            const headerMatch = updated.reconstructedText.match(/\[GENERATING: (.+?)\]/);
-            if (headerMatch) {
-              setDwProgress(`Generating... ${headerMatch[1]}`);
-            } else {
-              const words = updated.reconstructedText.trim().split(/\s+/).length;
-              if (words > 10) {
-                setDwProgress(`Generating... ${words.toLocaleString()} words so far`);
-              }
-            }
-            const textAfterHeader = updated.reconstructedText.replace(/\[GENERATING:.*?\]\n*/s, '').trim();
-            if (textAfterHeader.length > 100) {
-              setValidatorOutput(stripMarkdown(textAfterHeader));
-            }
           }
         } catch (e) {
           console.error("DW polling error:", e);
@@ -9951,6 +9935,7 @@ Generated on: ${new Date().toLocaleString()}`;
       <StreamingOutputModal
         isOpen={streamingModalOpen}
         startNew={streamingStartNew}
+        projectId={dwProjectId}
         onClose={() => {
           setStreamingModalOpen(false);
           setStreamingStartNew(false);

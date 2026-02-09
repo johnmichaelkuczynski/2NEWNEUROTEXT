@@ -1254,7 +1254,8 @@ export async function crossChunkReconstruct(
   audienceParameters?: string,
   rigorLevel?: string,
   customInstructions?: string,
-  contentAnalysis?: any
+  contentAnalysis?: any,
+  onChunkProgress?: (chunkIndex: number, totalChunks: number, chunkText: string) => void
 ): Promise<CCReconstructionResult> {
   const totalStartTime = Date.now();
   const wordCount = text.trim().split(/\s+/).length;
@@ -1315,6 +1316,14 @@ export async function crossChunkReconstruct(
     );
     processedChunks.push({ text: outputText, delta });
     totalOutputWords += countWords(outputText);
+    
+    if (onChunkProgress) {
+      try {
+        onChunkProgress(i, chunkBoundaries.length, outputText);
+      } catch (e) {
+        console.error(`[CC] onChunkProgress callback error:`, e);
+      }
+    }
     
     if (i < chunkBoundaries.length - 1) {
       console.log(`[CC] Waiting ${CHUNK_DELAY_MS}ms before next chunk...`);
