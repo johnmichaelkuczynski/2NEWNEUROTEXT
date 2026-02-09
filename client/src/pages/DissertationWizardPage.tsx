@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, Trash2, Loader2, Upload, FileText, Download, RefreshCw, ArrowRight, X, Sparkles } from "lucide-react";
+import { BookOpen, Trash2, Loader2, Upload, FileText, Download, RefreshCw, ArrowRight, X, Sparkles, Settings } from "lucide-react";
 
 const stripMarkdown = (text: string): string => {
   if (!text) return text;
@@ -79,6 +79,84 @@ const generateTableOfContents = (text: string): string => {
   return toc + text;
 };
 
+interface SeparatedOutput {
+  cleanText: string;
+  metadata: string;
+  hasMetadata: boolean;
+}
+
+const separateSkeletonMetadata = (text: string): SeparatedOutput => {
+  if (!text || text.trim().length === 0) return { cleanText: text, metadata: '', hasMetadata: false };
+
+  const lines = text.split('\n');
+  const cleanLines: string[] = [];
+  const metadataLines: string[] = [];
+  let inSkeletonBlock = false;
+
+  const skeletonHeaderPattern = /^={2,}\s*DOCUMENT SKELETON\s*={2,}$/i;
+  const uniqueContribPattern = /^\*{0,2}UNIQUE CONCEPTUAL CONTRIBUTION\*{0,2}\s*:/i;
+  const prereqPattern = /^\*{0,2}PREREQUISITE DEPENDENCY\*{0,2}\s*:/i;
+  const readerKnowsPattern = /^\*{0,2}WHAT THE READER KNOWS\b/i;
+  const sectionSummaryPattern = /^\*{0,2}SECTION SUMMARY\*{0,2}\s*:/i;
+  const conceptualContribPattern = /^\*{0,2}CONCEPTUAL CONTRIBUTION\*{0,2}\s*:/i;
+  const wordCountHeaderPattern = /^#+\s+.*\(\s*[\d,]+\s*words?\s*\)/i;
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+
+    if (skeletonHeaderPattern.test(trimmed)) {
+      inSkeletonBlock = true;
+      metadataLines.push(lines[i]);
+      continue;
+    }
+
+    if (inSkeletonBlock && /^={2,}\s*$/.test(trimmed)) {
+      inSkeletonBlock = false;
+      metadataLines.push(lines[i]);
+      continue;
+    }
+
+    if (inSkeletonBlock) {
+      metadataLines.push(lines[i]);
+      continue;
+    }
+
+    if (uniqueContribPattern.test(trimmed) ||
+        prereqPattern.test(trimmed) ||
+        readerKnowsPattern.test(trimmed) ||
+        sectionSummaryPattern.test(trimmed) ||
+        conceptualContribPattern.test(trimmed)) {
+      metadataLines.push(lines[i]);
+      if (i + 1 < lines.length && lines[i + 1].trim() === '') {
+        i++;
+      }
+      if (i + 1 < lines.length && lines[i + 1].trim() === '---') {
+        metadataLines.push(lines[i + 1]);
+        i++;
+      }
+      continue;
+    }
+
+    if (wordCountHeaderPattern.test(trimmed)) {
+      const cleanHeader = trimmed.replace(/\(\s*[\d,]+\s*words?\s*\)/i, '').trim();
+      metadataLines.push(`[Word allocation] ${trimmed}`);
+      cleanLines.push(cleanHeader);
+      continue;
+    }
+
+    cleanLines.push(lines[i]);
+  }
+
+  let cleanText = cleanLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  let metadata = metadataLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+
+  return {
+    cleanText,
+    metadata,
+    hasMetadata: metadata.length > 0
+  };
+};
+
 interface DwDocument {
   id: string;
   filename: string;
@@ -96,6 +174,7 @@ const DissertationWizardPage: React.FC = () => {
   const [llmProvider, setLlmProvider] = useState("zhi1");
   const [fidelityLevel, setFidelityLevel] = useState<"conservative" | "aggressive">("aggressive");
   const [output, setOutput] = useState("");
+  const [outputTab, setOutputTab] = useState<"clean" | "metadata">("clean");
 
   const [uploadedDocuments, setUploadedDocuments] = useState<DwDocument[]>([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
@@ -686,11 +765,11 @@ const DissertationWizardPage: React.FC = () => {
               </h3>
               <div className="flex gap-2 flex-wrap">
                 <Button variant="outline" size="sm"
-                  onClick={() => handleDownloadText(output, `reconstruction-output.txt`)}
+                  onClick={() => handleDownloadText(separateSkeletonMetadata(output).cleanText || output, `reconstruction-output.txt`)}
                   data-testid="button-download-dw-output">
                   <Download className="w-4 h-4 mr-2" /> Download
                 </Button>
-                <CopyButton text={output} />
+                <CopyButton text={separateSkeletonMetadata(output).cleanText || output} />
                 <Button onClick={handleClear} variant="outline" size="sm" data-testid="button-clear-dw">
                   <Trash2 className="w-4 h-4 mr-1" /> Clear
                 </Button>
@@ -709,17 +788,55 @@ const DissertationWizardPage: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Output Words:</span>
                   <span className="text-lg font-bold text-emerald-900 dark:text-emerald-100">
-                    {output.trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()}
+                    {(separateSkeletonMetadata(output).cleanText || output).trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()}
                   </span>
                 </div>
               </div>
             </div>
 
-            <TextStats text={output} showAiDetect={true} variant="prominent" targetWords={parseInt(targetWordCount) || undefined} />
+            <TextStats text={separateSkeletonMetadata(output).cleanText || output} showAiDetect={true} variant="prominent" targetWords={parseInt(targetWordCount) || undefined} />
 
-            <Textarea value={output} readOnly className="min-h-[300px] font-mono text-sm mt-4"
-              data-testid="textarea-dw-output"
-            />
+            {(() => {
+              const separated = separateSkeletonMetadata(output);
+              return separated.hasMetadata ? (
+                <div className="mt-4">
+                  <div className="flex gap-1 mb-3">
+                    <Button
+                      variant={outputTab === "clean" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setOutputTab("clean")}
+                      data-testid="button-dwpage-tab-clean"
+                    >
+                      <FileText className="w-4 h-4 mr-1" />
+                      Clean Output ({separated.cleanText.trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()} words)
+                    </Button>
+                    <Button
+                      variant={outputTab === "metadata" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setOutputTab("metadata")}
+                      data-testid="button-dwpage-tab-metadata"
+                    >
+                      <Settings className="w-4 h-4 mr-1" />
+                      Skeleton / Metadata
+                    </Button>
+                  </div>
+                  {outputTab === "clean" ? (
+                    <Textarea value={separated.cleanText} readOnly className="min-h-[300px] font-mono text-sm"
+                      data-testid="textarea-dw-output"
+                    />
+                  ) : (
+                    <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded border border-amber-200 dark:border-amber-700 max-h-[600px] overflow-y-auto">
+                      <div className="text-xs text-amber-600 dark:text-amber-400 mb-2 font-semibold uppercase tracking-wide">Document Skeleton & Processing Metadata</div>
+                      <pre className="whitespace-pre-wrap text-sm font-mono text-amber-900 dark:text-amber-200">{separated.metadata}</pre>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Textarea value={output} readOnly className="min-h-[300px] font-mono text-sm mt-4"
+                  data-testid="textarea-dw-output"
+                />
+              );
+            })()}
           </div>
         )}
 

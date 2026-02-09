@@ -136,6 +136,84 @@ const generateTableOfContents = (text: string): string => {
   return toc + text;
 };
 
+interface SeparatedOutput {
+  cleanText: string;
+  metadata: string;
+  hasMetadata: boolean;
+}
+
+const separateSkeletonMetadata = (text: string): SeparatedOutput => {
+  if (!text || text.trim().length === 0) return { cleanText: text, metadata: '', hasMetadata: false };
+
+  const lines = text.split('\n');
+  const cleanLines: string[] = [];
+  const metadataLines: string[] = [];
+  let inSkeletonBlock = false;
+
+  const skeletonHeaderPattern = /^={2,}\s*DOCUMENT SKELETON\s*={2,}$/i;
+  const uniqueContribPattern = /^\*{0,2}UNIQUE CONCEPTUAL CONTRIBUTION\*{0,2}\s*:/i;
+  const prereqPattern = /^\*{0,2}PREREQUISITE DEPENDENCY\*{0,2}\s*:/i;
+  const readerKnowsPattern = /^\*{0,2}WHAT THE READER KNOWS\b/i;
+  const sectionSummaryPattern = /^\*{0,2}SECTION SUMMARY\*{0,2}\s*:/i;
+  const conceptualContribPattern = /^\*{0,2}CONCEPTUAL CONTRIBUTION\*{0,2}\s*:/i;
+  const wordCountHeaderPattern = /^#+\s+.*\(\s*[\d,]+\s*words?\s*\)/i;
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+
+    if (skeletonHeaderPattern.test(trimmed)) {
+      inSkeletonBlock = true;
+      metadataLines.push(lines[i]);
+      continue;
+    }
+
+    if (inSkeletonBlock && /^={2,}\s*$/.test(trimmed)) {
+      inSkeletonBlock = false;
+      metadataLines.push(lines[i]);
+      continue;
+    }
+
+    if (inSkeletonBlock) {
+      metadataLines.push(lines[i]);
+      continue;
+    }
+
+    if (uniqueContribPattern.test(trimmed) ||
+        prereqPattern.test(trimmed) ||
+        readerKnowsPattern.test(trimmed) ||
+        sectionSummaryPattern.test(trimmed) ||
+        conceptualContribPattern.test(trimmed)) {
+      metadataLines.push(lines[i]);
+      if (i + 1 < lines.length && lines[i + 1].trim() === '') {
+        i++;
+      }
+      if (i + 1 < lines.length && lines[i + 1].trim() === '---') {
+        metadataLines.push(lines[i + 1]);
+        i++;
+      }
+      continue;
+    }
+
+    if (wordCountHeaderPattern.test(trimmed)) {
+      const cleanHeader = trimmed.replace(/\(\s*[\d,]+\s*words?\s*\)/i, '').trim();
+      metadataLines.push(`[Word allocation] ${trimmed}`);
+      cleanLines.push(cleanHeader);
+      continue;
+    }
+
+    cleanLines.push(lines[i]);
+  }
+
+  let cleanText = cleanLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  let metadata = metadataLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+
+  return {
+    cleanText,
+    metadata,
+    hasMetadata: metadata.length > 0
+  };
+};
+
 const HomePage: React.FC = () => {
   const { toast } = useToast();
   
@@ -268,11 +346,13 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [dwLlmProvider, setDwLlmProvider] = useState("zhi5");
   const [dwFidelityLevel, setDwFidelityLevel] = useState<"conservative" | "aggressive">("aggressive");
   const [dwOutput, setDwOutput] = useState("");
+  const [dwOutputTab, setDwOutputTab] = useState<"clean" | "metadata">("clean");
   const [dwStreamingModalOpen, setDwStreamingModalOpen] = useState(false);
   const [dwStreamingStartNew, setDwStreamingStartNew] = useState(false);
   const [validatorMode, setValidatorMode] = useState<"reconstruction" | null>(null);
   const [validatorDragOver, setValidatorDragOver] = useState(false);
   const [validatorOutput, setValidatorOutput] = useState<string>("");
+  const [validatorOutputTab, setValidatorOutputTab] = useState<"clean" | "metadata">("clean");
   const [validatorLoading, setValidatorLoading] = useState(false);
   const [validatorProgress, setValidatorProgress] = useState<string>(""); // Progress message for long docs
   // Multi-mode batch processing
@@ -5861,14 +5941,14 @@ Generated on: ${new Date().toLocaleString()}`;
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleDownloadText(validatorOutput, `validator-output-${validatorMode}.txt`)}
+                    onClick={() => handleDownloadText(separateSkeletonMetadata(validatorOutput).cleanText || validatorOutput, `validator-output-${validatorMode}.txt`)}
                     data-testid="button-download-validator-output"
                   >
                     <Download className="w-4 h-4 mr-2" />
                     Download
                   </Button>
                   <SendToButton
-                    text={validatorOutput}
+                    text={separateSkeletonMetadata(validatorOutput).cleanText || validatorOutput}
                     onSendToIntelligence={(text) => setDocumentA({ content: text })}
                     onSendToHumanizer={(text) => setBoxA(text)}
                     onSendToChat={(text) => {
@@ -5889,7 +5969,7 @@ Generated on: ${new Date().toLocaleString()}`;
                       }, 100);
                     }}
                   />
-                  <CopyButton text={validatorOutput} />
+                  <CopyButton text={separateSkeletonMetadata(validatorOutput).cleanText || validatorOutput} />
                   <Button
                     onClick={() => {
                       setRedoCustomInstructions("");
@@ -5932,7 +6012,7 @@ Generated on: ${new Date().toLocaleString()}`;
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Output Words:</span>
                       <span className="text-lg font-bold text-emerald-900 dark:text-emerald-100">
-                        {validatorOutput.trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()}
+                        {(separateSkeletonMetadata(validatorOutput).cleanText || validatorOutput).trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()}
                       </span>
                     </div>
                     {refineWordCount && (
@@ -5941,12 +6021,12 @@ Generated on: ${new Date().toLocaleString()}`;
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Target:</span>
                           <span className={`text-lg font-bold flex items-center gap-1 ${
-                            validatorOutput.trim().split(/\s+/).filter((w: string) => w).length >= parseInt(refineWordCount)
+                            (separateSkeletonMetadata(validatorOutput).cleanText || validatorOutput).trim().split(/\s+/).filter((w: string) => w).length >= parseInt(refineWordCount)
                               ? 'text-green-600 dark:text-green-400'
                               : 'text-red-600 dark:text-red-400'
                           }`}>
                             {parseInt(refineWordCount).toLocaleString()}
-                            {validatorOutput.trim().split(/\s+/).filter((w: string) => w).length >= parseInt(refineWordCount) ? (
+                            {(separateSkeletonMetadata(validatorOutput).cleanText || validatorOutput).trim().split(/\s+/).filter((w: string) => w).length >= parseInt(refineWordCount) ? (
                               <CheckCircle className="w-4 h-4" />
                             ) : (
                               <AlertCircle className="w-4 h-4" />
@@ -5956,13 +6036,51 @@ Generated on: ${new Date().toLocaleString()}`;
                       </>
                     )}
                   </div>
-                  <TextStats text={validatorOutput} showAiDetect={true} variant="compact" />
+                  <TextStats text={separateSkeletonMetadata(validatorOutput).cleanText || validatorOutput} showAiDetect={true} variant="compact" />
                 </div>
               </div>
               
-              <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[600px] overflow-y-auto">
-                <FreemiumContent content={validatorOutput} />
-              </div>
+              {(() => {
+                const separated = separateSkeletonMetadata(validatorOutput);
+                return separated.hasMetadata ? (
+                  <div>
+                    <div className="flex gap-1 mb-3">
+                      <Button
+                        variant={validatorOutputTab === "clean" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setValidatorOutputTab("clean")}
+                        data-testid="button-validator-tab-clean"
+                      >
+                        <FileText className="w-4 h-4 mr-1" />
+                        Clean Output ({separated.cleanText.trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()} words)
+                      </Button>
+                      <Button
+                        variant={validatorOutputTab === "metadata" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setValidatorOutputTab("metadata")}
+                        data-testid="button-validator-tab-metadata"
+                      >
+                        <Settings className="w-4 h-4 mr-1" />
+                        Skeleton / Metadata
+                      </Button>
+                    </div>
+                    {validatorOutputTab === "clean" ? (
+                      <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[600px] overflow-y-auto">
+                        <FreemiumContent content={separated.cleanText} />
+                      </div>
+                    ) : (
+                      <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded border border-amber-200 dark:border-amber-700 max-h-[600px] overflow-y-auto">
+                        <div className="text-xs text-amber-600 dark:text-amber-400 mb-2 font-semibold uppercase tracking-wide">Document Skeleton & Processing Metadata</div>
+                        <pre className="whitespace-pre-wrap text-sm font-mono text-amber-900 dark:text-amber-200">{separated.metadata}</pre>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700 max-h-[600px] overflow-y-auto">
+                    <FreemiumContent content={validatorOutput} />
+                  </div>
+                );
+              })()}
               
               {/* Refine Reconstruction Section */}
               <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
@@ -6017,7 +6135,7 @@ Generated on: ${new Date().toLocaleString()}`;
                   </Button>
                 </div>
                 <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-                  Current word count: ~{validatorOutput.trim().split(/\s+/).length} words
+                  Current word count: ~{(separateSkeletonMetadata(validatorOutput).cleanText || validatorOutput).trim().split(/\s+/).length} words
                 </p>
               </div>
             </div>
@@ -9854,11 +9972,11 @@ Generated on: ${new Date().toLocaleString()}`;
               </h3>
               <div className="flex gap-2 flex-wrap">
                 <Button variant="outline" size="sm"
-                  onClick={() => handleDownloadText(dwOutput, `reconstruction-output.txt`)}
+                  onClick={() => handleDownloadText(separateSkeletonMetadata(dwOutput).cleanText || dwOutput, `reconstruction-output.txt`)}
                   data-testid="button-download-dw-output">
                   <Download className="w-4 h-4 mr-2" /> Download
                 </Button>
-                <CopyButton text={dwOutput} />
+                <CopyButton text={separateSkeletonMetadata(dwOutput).cleanText || dwOutput} />
                 <Button onClick={handleDwClear} variant="outline" size="sm" data-testid="button-clear-dw">
                   <Trash2 className="w-4 h-4 mr-1" /> Clear
                 </Button>
@@ -9877,17 +9995,55 @@ Generated on: ${new Date().toLocaleString()}`;
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Output Words:</span>
                   <span className="text-lg font-bold text-emerald-900 dark:text-emerald-100">
-                    {dwOutput.trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()}
+                    {(separateSkeletonMetadata(dwOutput).cleanText || dwOutput).trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()}
                   </span>
                 </div>
               </div>
             </div>
 
-            <TextStats text={dwOutput} showAiDetect={true} variant="prominent" targetWords={parseInt(dwTargetWordCount) || undefined} />
+            <TextStats text={separateSkeletonMetadata(dwOutput).cleanText || dwOutput} showAiDetect={true} variant="prominent" targetWords={parseInt(dwTargetWordCount) || undefined} />
 
-            <Textarea value={dwOutput} readOnly className="min-h-[300px] font-mono text-sm mt-4"
-              data-testid="textarea-dw-output"
-            />
+            {(() => {
+              const separated = separateSkeletonMetadata(dwOutput);
+              return separated.hasMetadata ? (
+                <div className="mt-4">
+                  <div className="flex gap-1 mb-3">
+                    <Button
+                      variant={dwOutputTab === "clean" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setDwOutputTab("clean")}
+                      data-testid="button-dw-tab-clean"
+                    >
+                      <FileText className="w-4 h-4 mr-1" />
+                      Clean Output ({separated.cleanText.trim().split(/\s+/).filter((w: string) => w).length.toLocaleString()} words)
+                    </Button>
+                    <Button
+                      variant={dwOutputTab === "metadata" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setDwOutputTab("metadata")}
+                      data-testid="button-dw-tab-metadata"
+                    >
+                      <Settings className="w-4 h-4 mr-1" />
+                      Skeleton / Metadata
+                    </Button>
+                  </div>
+                  {dwOutputTab === "clean" ? (
+                    <Textarea value={separated.cleanText} readOnly className="min-h-[300px] font-mono text-sm"
+                      data-testid="textarea-dw-output"
+                    />
+                  ) : (
+                    <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded border border-amber-200 dark:border-amber-700 max-h-[600px] overflow-y-auto">
+                      <div className="text-xs text-amber-600 dark:text-amber-400 mb-2 font-semibold uppercase tracking-wide">Document Skeleton & Processing Metadata</div>
+                      <pre className="whitespace-pre-wrap text-sm font-mono text-amber-900 dark:text-amber-200">{separated.metadata}</pre>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Textarea value={dwOutput} readOnly className="min-h-[300px] font-mono text-sm mt-4"
+                  data-testid="textarea-dw-output"
+                />
+              );
+            })()}
           </div>
         )}
 
@@ -9966,7 +10122,7 @@ Generated on: ${new Date().toLocaleString()}`;
                       Stage 1: Reconstruction Complete
                     </Badge>
                     <Badge variant="outline" className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
-                      {fullSuiteReconstructionOutput.trim().split(/\s+/).length.toLocaleString()} words
+                      {(separateSkeletonMetadata(fullSuiteReconstructionOutput).cleanText || fullSuiteReconstructionOutput).trim().split(/\s+/).length.toLocaleString()} words
                     </Badge>
                   </>
                 )}
@@ -9982,8 +10138,8 @@ Generated on: ${new Date().toLocaleString()}`;
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    navigator.clipboard.writeText(fullSuiteReconstructionOutput);
-                    toast({ title: "Copied!", description: "Reconstruction output copied to clipboard" });
+                    navigator.clipboard.writeText(separateSkeletonMetadata(fullSuiteReconstructionOutput).cleanText || fullSuiteReconstructionOutput);
+                    toast({ title: "Copied!", description: "Clean reconstruction output copied to clipboard" });
                   }}
                   className="border-blue-300 dark:border-blue-600"
                   data-testid="button-copy-reconstruction"
@@ -10003,14 +10159,29 @@ Generated on: ${new Date().toLocaleString()}`;
             </div>
             {/* Popup Content */}
             <div className="flex-1 overflow-auto p-4">
-              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-gray-800 dark:text-gray-200">
-                {fullSuiteReconstructionOutput}
-              </pre>
+              {(() => {
+                const separated = separateSkeletonMetadata(fullSuiteReconstructionOutput);
+                return separated.hasMetadata ? (
+                  <div>
+                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-gray-800 dark:text-gray-200">
+                      {separated.cleanText}
+                    </pre>
+                    <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded border border-amber-200 dark:border-amber-700">
+                      <div className="text-xs text-amber-600 dark:text-amber-400 mb-2 font-semibold uppercase tracking-wide">Document Skeleton & Processing Metadata</div>
+                      <pre className="whitespace-pre-wrap text-xs font-mono text-amber-900 dark:text-amber-200">{separated.metadata}</pre>
+                    </div>
+                  </div>
+                ) : (
+                  <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-gray-800 dark:text-gray-200">
+                    {fullSuiteReconstructionOutput}
+                  </pre>
+                );
+              })()}
             </div>
             {/* Popup Footer */}
             <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-b-lg">
               <div className="flex items-center justify-between gap-4 flex-wrap">
-                <TextStats text={fullSuiteReconstructionOutput} showAiDetect={true} variant="compact" />
+                <TextStats text={separateSkeletonMetadata(fullSuiteReconstructionOutput).cleanText || fullSuiteReconstructionOutput} showAiDetect={true} variant="compact" />
                 <Button
                   onClick={() => setFullSuiteReconstructionPopupOpen(false)}
                   className="bg-blue-600 hover:bg-blue-700 text-white"
