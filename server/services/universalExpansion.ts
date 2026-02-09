@@ -480,10 +480,14 @@ async function generateSection(
   
   const antiRedundancyBlock = pointsCoveredSoFar.length > 0
     ? `\n═══════════════════════════════════════════════════════════════
-ANTI-REDUNDANCY: POINTS ALREADY COVERED IN PREVIOUS SECTIONS
-The following arguments and claims have ALREADY been made. Do NOT restate them.
-Each new section must ADVANCE the argument with NEW material from the source texts.
+CONCEPTS ALREADY ESTABLISHED (TREAT AS SETTLED - DO NOT RE-ARGUE):
+These points are DONE. The reader already understands them. Referring to them
+as established premises is fine. RE-EXPLAINING or RE-ARGUING them is FORBIDDEN.
 ${pointsCoveredSoFar.map((p, i) => `  ${i + 1}. ${p}`).join('\n')}
+
+YOUR TASK: Introduce concepts that DEPEND ON the above but were NOT yet stated.
+The reader should learn something NEW in this section that they could NOT have
+known from reading only the previous sections.
 ═══════════════════════════════════════════════════════════════\n`
     : '';
 
@@ -552,28 +556,26 @@ FREUD: You speak of harmony, but at what psychological cost?
 
 Write the DIALOGUE now (${wordsToRequest} words of conversation):`;
       } else {
-        prompt = `You are writing a section of an academic thesis/dissertation.
+        prompt = `You are writing ONE section of a UNIFIED academic thesis/dissertation.
 
 ═══════════════════════════════════════════════════════════════
-PRIMARY SOURCE MATERIAL (UPLOADED DOCUMENTS - your PRIMARY content source)
-You MUST ground your writing in this source material. Every section must
-demonstrably reference, analyze, quote, paraphrase, or build upon specific
-ideas, arguments, and evidence found IN THIS SOURCE TEXT.
-Do NOT ignore this content in favor of the user's instructions.
-The source material is WHAT you write about. Instructions are HOW you structure it.
+PRIMARY SOURCE MATERIAL:
 ═══════════════════════════════════════════════════════════════
 ${relevantSourceExcerpt}
 ═══════════════════════════════════════════════════════════════
 
-FULL DOCUMENT OUTLINE:
+FULL DOCUMENT OUTLINE (shows progressive argument structure):
 ${fullOutline}
 
-PREVIOUS SECTIONS WRITTEN:
-${previousSections || '[This is the first section]'}
+═══════════════════════════════════════════════════════════════
+WHAT HAS ALREADY BEEN ESTABLISHED IN PREVIOUS SECTIONS:
+(You MUST treat these as settled ground. Do NOT re-argue them.)
+═══════════════════════════════════════════════════════════════
+${previousSections || '[This is the first section - establish the foundational concepts]'}
 ${antiRedundancyBlock}
 ═══════════════════════════════════════════════════════════════
 SECTION TO WRITE NOW: ${sectionName}
-TOTAL TARGET LENGTH: ${targetWordCount} words
+TARGET LENGTH: ${targetWordCount} words
 THIS CHUNK: Write approximately ${wordsToRequest} words to START this section
 ═══════════════════════════════════════════════════════════════
 
@@ -582,22 +584,33 @@ ${styleConstraints.join('\n')}
 ${citationGuidance}
 ${philosopherGuidance}
 
-USER'S STRUCTURAL/FRAMING INSTRUCTIONS (governs structure and approach, NOT content):
+USER'S INSTRUCTIONS:
 ${customInstructions}
 
-CRITICAL REQUIREMENTS:
-1. Write approximately ${wordsToRequest} words NOW - this is just the beginning
-2. This must be substantive academic prose, not filler
-3. Your content MUST be grounded in the PRIMARY SOURCE MATERIAL above - cite specific ideas, arguments, quotes, and examples FROM the uploaded source texts
-4. The user's instructions tell you HOW to structure and frame the writing - the source material tells you WHAT to write about
-5. Each paragraph must introduce NEW material not already covered in previous sections
-6. NO MARKDOWN FORMATTING - use plain text only
-7. Include proper academic citations inline (Author, Year)
-8. Each paragraph should advance the argument with DIFFERENT evidence/examples from the source
-9. DO NOT start with the section title - the system will add it
-10. DO NOT write a conclusion yet - more content will follow
-11. End at a natural paragraph break, ready for continuation
-12. NEVER repeat the same thesis statement, central claim, or argument that appeared in a previous section - each section must present DISTINCT material
+═══════════════════════════════════════════════════════════════
+PROGRESSIVE ARGUMENT RULES (MANDATORY):
+═══════════════════════════════════════════════════════════════
+
+1. This section must introduce at least ONE new concept, distinction, or analytical
+   tool that DID NOT EXIST in any previous section.
+2. This section must BUILD ON concepts established in previous sections - refer to
+   them as settled premises, not as things that need re-explaining.
+3. The central thesis was stated in the Introduction. DO NOT RESTATE IT.
+   Instead, develop a NEW FACET that only becomes visible because of the
+   conceptual groundwork laid in the sections before this one.
+4. BANNED PHRASES: "furthermore", "this analysis extends to", "as discussed",
+   "building on the previous", "as we have seen". These are cosmetic transitions
+   that mask repetition. Instead, show WHY the previous section's conclusion
+   NECESSITATES this section's specific inquiry.
+5. THE SWAP TEST: If this section could be swapped with any other section without
+   the reader noticing, you have failed. This section must be UNINTELLIGIBLE
+   without the concepts introduced in earlier sections.
+6. Every word must carry substantive meaning. NO PUFFERY. NO FILLER.
+7. Ground your writing in the PRIMARY SOURCE MATERIAL above.
+8. NO MARKDOWN FORMATTING - use plain text only.
+9. DO NOT start with the section title - the system will add it.
+10. DO NOT write a conclusion yet - more content will follow.
+11. End at a natural paragraph break, ready for continuation.
 
 Write the BEGINNING of this section (${wordsToRequest} words):`;
       }
@@ -637,12 +650,10 @@ ${wordsRemaining > 4000 ? '8. DO NOT end the conversation yet - more dialogue wi
 
 Continue the DIALOGUE now (${wordsToRequest} more words):`;
       } else {
-        prompt = `You are CONTINUING to write a section of an academic thesis/dissertation.
+        prompt = `You are CONTINUING to write a section of a UNIFIED academic thesis/dissertation.
 
 ═══════════════════════════════════════════════════════════════
-PRIMARY SOURCE MATERIAL (UPLOADED DOCUMENTS - continue drawing from this)
-Your content must remain grounded in this source material.
-Reference specific ideas, arguments, or evidence from it.
+PRIMARY SOURCE MATERIAL:
 ═══════════════════════════════════════════════════════════════
 ${relevantSourceExcerpt.substring(0, 4000)}
 ═══════════════════════════════════════════════════════════════
@@ -657,7 +668,7 @@ LAST PART OF WHAT YOU WROTE (continue from here):
 ${lastParagraphs}
 """
 
-USER'S STRUCTURAL INSTRUCTIONS:
+USER'S INSTRUCTIONS:
 ${customInstructions}
 ${antiRedundancyBlock}
 CRITICAL REQUIREMENTS:
@@ -666,9 +677,10 @@ CRITICAL REQUIREMENTS:
 3. Do NOT repeat what was already written - introduce NEW points from the source material
 4. Do NOT write introductory phrases like "Continuing from..." or "As discussed..."
 5. Draw on DIFFERENT passages from the source material than what you already used
-6. This must be substantive content grounded in the uploaded texts, not filler
+6. This must be substantive content - every word must carry meaning, NO PUFFERY
 7. NO MARKDOWN FORMATTING - use plain text only
-${wordsRemaining > 4000 ? '8. DO NOT conclude yet - more content will follow' : '8. You may write a concluding paragraph if appropriate'}
+8. BANNED: "furthermore", "this analysis extends to", "as we have seen" - these mask repetition
+${wordsRemaining > 4000 ? '9. DO NOT conclude yet - more content will follow' : '9. You may write a concluding paragraph if appropriate'}
 
 Continue writing NOW (${wordsToRequest} more words):`;
       }
@@ -745,24 +757,48 @@ function extractKeyPoints(sectionContent: string, sectionName: string): string[]
   for (const sentence of sentences) {
     const normalized = sentence.trim().toLowerCase().replace(/\s+/g, ' ');
     
-    const isClaimLike = /\b(argues?|claims?|contends?|demonstrates?|shows?|reveals?|suggests?|establishes?|proves?|maintains?|asserts?|proposes?|concludes?|central|key|crucial|fundamental|essential|primary|core)\b/i.test(sentence);
+    const isClaimLike = /\b(argues?|claims?|contends?|demonstrates?|shows?|reveals?|suggests?|establishes?|proves?|maintains?|asserts?|proposes?|concludes?|central|key|crucial|fundamental|essential|primary|core|introduces?|defines?|distinguishes?|therefore|consequently|necessitates?)\b/i.test(sentence);
     
     if (isClaimLike && !seen.has(normalized.substring(0, 60))) {
       seen.add(normalized.substring(0, 60));
-      const cleaned = sentence.trim().substring(0, 150);
+      const cleaned = sentence.trim().substring(0, 200);
       points.push(`[${sectionName}] ${cleaned}`);
-      if (points.length >= 5) break;
+      if (points.length >= 8) break;
     }
   }
   
   if (points.length === 0) {
-    const firstSentences = sentences.slice(0, 2);
+    const firstSentences = sentences.slice(0, 3);
     for (const s of firstSentences) {
-      points.push(`[${sectionName}] ${s.trim().substring(0, 150)}`);
+      points.push(`[${sectionName}] ${s.trim().substring(0, 200)}`);
     }
   }
   
   return points;
+}
+
+function generateSectionSummary(sectionContent: string, sectionName: string, maxWords: number = 300): string {
+  const words = sectionContent.trim().split(/\s+/);
+  if (words.length <= maxWords) return sectionContent;
+  
+  const paragraphs = sectionContent.split(/\n\n+/).filter(p => p.trim().length > 50);
+  
+  const firstPara = paragraphs[0] || '';
+  const lastPara = paragraphs[paragraphs.length - 1] || '';
+  
+  const middleParagraphs = paragraphs.slice(1, -1);
+  const claimParagraphs = middleParagraphs
+    .filter(p => /\b(introduces?|defines?|argues?|establishes?|distinguishes?|therefore|thus|this means|the key|crucial|demonstrates?)\b/i.test(p))
+    .slice(0, 2);
+  
+  const summary = [firstPara, ...claimParagraphs, lastPara]
+    .map(p => {
+      const pWords = p.trim().split(/\s+/);
+      return pWords.length > 100 ? pWords.slice(0, 100).join(' ') + '...' : p;
+    })
+    .join('\n\n');
+  
+  return summary;
 }
 
 /**
@@ -986,13 +1022,10 @@ export async function universalExpand(request: ExpansionRequest): Promise<Expans
     }
   }
   
-  // Generate the full outline first
   const outlinePrompt = `You are creating a detailed outline for an academic thesis/dissertation.
 
 ═══════════════════════════════════════════════════════════════
-PRIMARY SOURCE MATERIAL (uploaded documents to build from):
-The thesis/dissertation MUST be grounded in and derived from this source material.
-Each section must draw on DIFFERENT parts of the source.
+PRIMARY SOURCE MATERIAL:
 ═══════════════════════════════════════════════════════════════
 ${text}
 ═══════════════════════════════════════════════════════════════
@@ -1002,22 +1035,41 @@ TARGET: ${targetWordCount} word thesis/dissertation
 STRUCTURE (each section with target word count):
 ${structure.map(s => `- ${s.name}: ${s.wordCount} words`).join('\n')}
 
-USER'S STRUCTURAL/FRAMING INSTRUCTIONS (governs structure and approach):
+USER'S STRUCTURAL/FRAMING INSTRUCTIONS:
 ${customInstructions}
 
-Create a detailed outline that will guide writing each section. For each section, provide:
-1. Main argument/thesis of that section (must be DISTINCT from other sections - no overlap)
-2. Key points to cover (3-5 bullet points) - each drawn from DIFFERENT passages in the source material
-3. Specific quotes, ideas, or passages from the source material to reference in that section
-4. How it connects to other sections while advancing a DIFFERENT aspect of the argument
+═══════════════════════════════════════════════════════════════
+PROGRESSIVE ARGUMENT DEVELOPMENT (MANDATORY)
+═══════════════════════════════════════════════════════════════
 
-CRITICAL ANTI-REDUNDANCY RULES:
-- Each section MUST have a unique thesis that is NOT a restatement of any other section's thesis
-- Each section must draw from DIFFERENT parts of the source material
-- NO section should repeat the central argument - each should develop a DISTINCT facet
-- The outline must show PROGRESSIVE argument development, not circular restatement
+The outline MUST create a PROGRESSIVE argument where each section is a PREREQUISITE for the next.
+This means: if you swapped two chapters, downstream chapters would become unintelligible.
 
-Return a comprehensive outline that ensures each section covers genuinely different ground.`;
+THE TEST FOR A UNIFIED DOCUMENT:
+A genuinely unified argument has the property that removing or reordering a section causes
+downstream sections to become unintelligible. If chapters can be freely reordered without
+breaking anything, you have failed.
+
+For each section, provide:
+1. UNIQUE CONCEPTUAL CONTRIBUTION: What NEW concept, distinction, or analytical tool does
+   this section introduce that DID NOT EXIST in any previous section?
+2. PREREQUISITE DEPENDENCY: What specific concept from a PREVIOUS section must the reader
+   already understand for THIS section to make sense? (First section excepted)
+3. KEY POINTS (3-5): Each drawn from DIFFERENT passages in the source material
+4. WHAT THE READER KNOWS AFTER THIS SECTION: What can the reader now understand that
+   they could NOT have understood before reading this section?
+
+ANTI-REDUNDANCY RULES:
+- The central thesis should appear ONCE in the introduction. Subsequent sections develop
+  DIFFERENT FACETS that DEPEND on concepts introduced in earlier sections.
+- Each section must introduce at least one NEW analytical concept, distinction, or framework
+  that was not available in any previous section
+- "Furthermore" and "this analysis extends to" are BANNED as transitions. Instead, transitions
+  must show WHY the previous section's conclusion NECESSITATES the current section's inquiry
+- If a chapter could be swapped with another chapter without breaking logical flow, the outline
+  has FAILED. Redesign the section dependencies.
+
+Return a comprehensive progressive outline.`;
 
   console.log(`[Universal Expansion] Generating outline...`);
   
@@ -1140,11 +1192,11 @@ Return a comprehensive outline that ensures each section covers genuinely differ
       });
     }
     
-    // Keep track of previous sections with key claims for anti-redundancy context
-    const sectionSummary = sectionResult.newPointsCovered.length > 0
-      ? sectionResult.newPointsCovered.map(p => `  - ${p}`).join('\n')
-      : sectionContent.substring(0, 300) + '...';
-    previousSections += `\n\n[${section.name}] KEY CLAIMS MADE:\n${sectionSummary}`;
+    const condensedSummary = generateSectionSummary(sectionContent, section.name, 400);
+    const keyClaimsList = sectionResult.newPointsCovered.length > 0
+      ? '\nKEY CLAIMS:\n' + sectionResult.newPointsCovered.map(p => `  - ${p}`).join('\n')
+      : '';
+    previousSections += `\n\n═══ ${section.name} (ESTABLISHED - DO NOT RESTATE) ═══\n${condensedSummary}${keyClaimsList}`;
     
     // Small delay to avoid rate limiting
     if (i < structure.length - 1) {
