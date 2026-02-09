@@ -8,6 +8,7 @@ import TranslationPage from "@/pages/TranslationPage";
 import WebSearchPage from "@/pages/WebSearchPage";
 import { AnalyticsPage } from "@/pages/AnalyticsPage";
 import JobHistoryPage from "@/pages/JobHistoryPage";
+import DissertationWizardPage from "@/pages/DissertationWizardPage";
 import NotFound from "@/pages/not-found";
 import { BrainCircuit, Languages, FileEdit, Globe, Bot, Brain, Mail, User, LogOut, Trash2, History, Eye, Loader2, CreditCard } from "lucide-react";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
@@ -210,6 +211,14 @@ function Navigation() {
             <span>Contact Us</span>
           </a>
           <Link 
+            href="/dissertation-wizard" 
+            className="flex items-center gap-2 hover:underline text-sm bg-emerald-600/80 text-white px-3 py-1.5 rounded-md"
+            data-testid="link-dissertation-wizard"
+          >
+            <FileEdit className="h-4 w-4" />
+            <span>Dissertation Wizard</span>
+          </Link>
+          <Link 
             href="/job-history" 
             className="flex items-center gap-2 hover:underline text-sm bg-primary-foreground/10 px-3 py-1.5 rounded-md"
             data-testid="link-job-history"
@@ -399,6 +408,7 @@ function Router({ resetKey }: { resetKey: number }) {
       <Navigation />
       <Switch key={resetKey}>
         <Route path="/" component={HomePage} />
+        <Route path="/dissertation-wizard" component={DissertationWizardPage} />
         <Route path="/analytics" component={AnalyticsPage} />
         <Route path="/job-history" component={JobHistoryPage} />
         <Route component={NotFound} />
