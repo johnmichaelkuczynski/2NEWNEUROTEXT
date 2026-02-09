@@ -181,7 +181,6 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [libraryDragOver, setLibraryDragOver] = useState(false);
   const [dwUploadedDocuments, setDwUploadedDocuments] = useState<Array<{id: string; filename: string; content: string; wordCount: number; role: 'primary' | 'source'}>>([]);
   const [dwSelectedDocumentIds, setDwSelectedDocumentIds] = useState<Set<string>>(new Set());
-  const [dwLibraryInstructions, setDwLibraryInstructions] = useState("");
   const [dwLibraryDragOver, setDwLibraryDragOver] = useState(false);
   const [dwProcessing, setDwProcessing] = useState(false);
   const [dwProgress, setDwProgress] = useState("");
@@ -9583,16 +9582,12 @@ Generated on: ${new Date().toLocaleString()}`;
                 
                 {dwSelectedDocumentIds.size > 0 && (
                   <div className="mt-4 space-y-3">
-                    <label className="block text-sm font-medium text-blue-800 dark:text-blue-200">
-                      Instructions for selected documents:
-                    </label>
-                    <Textarea
-                      value={dwLibraryInstructions}
-                      onChange={(e) => setDwLibraryInstructions(e.target.value)}
-                      placeholder="e.g., EXPAND INTO A 50,000 WORD DISSERTATION&#10;or: COMBINE THESE INTO A SINGLE COHESIVE WORK&#10;or: EXTRACT THE KEY ARGUMENTS FROM EACH AND SYNTHESIZE"
-                      className="min-h-[80px] text-sm"
-                      data-testid="textarea-dw-library-instructions"
-                    />
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                      <p className="font-medium">How it works:</p>
+                      <p>PRIMARY TEXT goes into the Input box below (this is what gets rewritten/expanded).</p>
+                      <p>SOURCE MATERIAL gets attached as reference for the AI to borrow from.</p>
+                      <p>Then write your instructions in "Custom Instructions" below (e.g., "ILLUSTRATE EACH CLAIM WITH EXAMPLES FROM THE UPLOADS").</p>
+                    </div>
                     <Button
                       onClick={() => {
                         const selectedDocs = dwUploadedDocuments.filter(d => dwSelectedDocumentIds.has(d.id));
@@ -9604,39 +9599,35 @@ Generated on: ${new Date().toLocaleString()}`;
                         
                         if (primaryDocs.length > 0 && sourceDocs.length > 0) {
                           setValidatorInputText(combinedPrimary);
-                          const sourceBlock = `[SOURCE MATERIAL - USE AS REFERENCE ONLY]\n${combinedSource}\n[END SOURCE MATERIAL]`;
-                          const existingInstructions = dwLibraryInstructions.trim();
-                          setValidatorCustomInstructions(
-                            existingInstructions
-                              ? `${existingInstructions}\n\n${sourceBlock}`
-                              : sourceBlock
-                          );
+                          const sourceBlock = `\n\n[SOURCE MATERIAL - USE AS REFERENCE]\n${combinedSource}\n[END SOURCE MATERIAL]`;
+                          const existing = validatorCustomInstructions.trim();
+                          const alreadyHasSource = existing.includes('[SOURCE MATERIAL');
+                          if (alreadyHasSource) {
+                            const cleaned = existing.replace(/\n*\[SOURCE MATERIAL[\s\S]*?\[END SOURCE MATERIAL\]/g, '').trim();
+                            setValidatorCustomInstructions(cleaned ? `${cleaned}${sourceBlock}` : sourceBlock.trim());
+                          } else {
+                            setValidatorCustomInstructions(existing ? `${existing}${sourceBlock}` : sourceBlock.trim());
+                          }
                           toast({
-                            title: "Documents Loaded (Separated)",
-                            description: `${primaryDocs.length} primary text(s) loaded as input. ${sourceDocs.length} source document(s) loaded as reference material.`,
+                            title: "Documents Ready",
+                            description: `Primary text loaded to Input. ${sourceDocs.length} source doc(s) attached as reference. Now write your instructions in "Custom Instructions" below.`,
                           });
                         } else if (primaryDocs.length > 0) {
                           setValidatorInputText(combinedPrimary);
-                          if (dwLibraryInstructions.trim()) {
-                            setValidatorCustomInstructions(dwLibraryInstructions);
-                          }
                           toast({
-                            title: "Documents Loaded",
-                            description: `${primaryDocs.length} primary text(s) loaded. No source material assigned.`,
+                            title: "Primary Text Loaded",
+                            description: `Loaded to Input box. Write your instructions in "Custom Instructions" below, then click DISSERTATE.`,
                           });
                         } else {
                           const combined = combineDocuments(selectedDocs);
                           setValidatorInputText(combined);
-                          if (dwLibraryInstructions.trim()) {
-                            setValidatorCustomInstructions(dwLibraryInstructions);
-                          }
                           toast({
-                            title: "Documents Loaded as Source Material",
-                            description: `${selectedDocs.length} document(s) loaded. Tip: Mark one as PRIMARY TEXT if you want it rewritten.`,
+                            title: "Documents Loaded",
+                            description: `${selectedDocs.length} document(s) loaded as input. Tip: Mark one as PRIMARY TEXT if you want it rewritten while using others as reference.`,
                           });
                         }
                       }}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                      className="w-full bg-blue-600 text-white"
                       data-testid="button-load-dw-selected"
                     >
                       <ArrowRight className="w-4 h-4 mr-2" />
