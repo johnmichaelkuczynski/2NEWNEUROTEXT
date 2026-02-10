@@ -334,7 +334,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [libraryDragOver, setLibraryDragOver] = useState(false);
   const [streamingProjectId, setStreamingProjectId] = useState<number | null>(null);
   const [dwUploadedDocuments, setDwUploadedDocuments] = useState<Array<{id: string; filename: string; content: string; wordCount: number}>>([]);
-  const [dwSelectedDocumentIds, setDwSelectedDocumentIds] = useState<Set<string>>(new Set());
+  const [dwMainDocDragOver, setDwMainDocDragOver] = useState(false);
   const [dwLibraryDragOver, setDwLibraryDragOver] = useState(false);
   const [dwProcessing, setDwProcessing] = useState(false);
   const [dwProgress, setDwProgress] = useState("");
@@ -1088,39 +1088,37 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       }
       const allDocs = [...dwUploadedDocuments, ...newDocs];
       setDwUploadedDocuments(allDocs);
-      setDwSelectedDocumentIds(prev => { const newSet = new Set(prev); newIds.forEach(id => newSet.add(id)); return newSet; });
-      toast({ title: `${filesToProcess.length} Document${filesToProcess.length > 1 ? 's' : ''} Added`, description: `Dissertation Wizard library now has ${allDocs.length} document${allDocs.length > 1 ? 's' : ''}.` });
+      dwUpdateSourceMaterial(allDocs);
+      toast({ title: `${filesToProcess.length} Document${filesToProcess.length > 1 ? 's' : ''} Added`, description: `${allDocs.length} supporting document${allDocs.length > 1 ? 's' : ''} attached.` });
     } catch (error) {
       console.error('DW file upload error:', error);
       toast({ title: "Upload Failed", description: "Could not read one or more files.", variant: "destructive" });
     }
   };
 
-  const toggleDwDocumentSelection = (docId: string) => {
-    setDwSelectedDocumentIds(prev => { const newSet = new Set(prev); if (newSet.has(docId)) newSet.delete(docId); else newSet.add(docId); return newSet; });
+  const dwUpdateSourceMaterial = (docs: Array<{id: string; filename: string; content: string; wordCount: number}>) => {
+    if (docs.length === 0) {
+      setDwSourceMaterial("");
+      setDwSourceMaterialNames([]);
+    } else {
+      const sourceBlock = `[SOURCE MATERIAL - USE AS REFERENCE]\n${dwCombineDocuments(docs)}\n[END SOURCE MATERIAL]`;
+      setDwSourceMaterial(sourceBlock);
+      setDwSourceMaterialNames(docs.map(d => d.filename));
+    }
   };
 
   const clearDwDocumentLibrary = () => {
     setDwUploadedDocuments([]);
-    setDwSelectedDocumentIds(new Set());
-    toast({ title: "Library Cleared", description: "All documents removed from Dissertation Wizard library." });
+    setDwSourceMaterial("");
+    setDwSourceMaterialNames([]);
+    toast({ title: "Library Cleared", description: "All supporting documents removed." });
   };
 
   const handleDwRemoveDocument = (docId: string) => {
     const newDocs = dwUploadedDocuments.filter(d => d.id !== docId);
     setDwUploadedDocuments(newDocs);
-    setDwSelectedDocumentIds(prev => { const newSet = new Set(prev); newSet.delete(docId); return newSet; });
+    dwUpdateSourceMaterial(newDocs);
     toast({ title: "Document Removed", description: newDocs.length > 0 ? `${newDocs.length} document${newDocs.length > 1 ? 's' : ''} remaining` : "Library cleared" });
-  };
-
-  const handleDwLoadSelectedDocuments = () => {
-    const selectedDocs = dwUploadedDocuments.filter(d => dwSelectedDocumentIds.has(d.id));
-    if (selectedDocs.length === 0) return;
-
-    const sourceBlock = `[SOURCE MATERIAL - USE AS REFERENCE]\n${dwCombineDocuments(selectedDocs)}\n[END SOURCE MATERIAL]`;
-    setDwSourceMaterial(sourceBlock);
-    setDwSourceMaterialNames(selectedDocs.map(d => d.filename));
-    toast({ title: "Reference Material Attached", description: `${selectedDocs.length} document${selectedDocs.length > 1 ? 's' : ''} attached as reference. Enter your text in the Input box and instructions below.` });
   };
 
   const dwDetectsAsInstructions = (text: string): boolean => {
@@ -9723,12 +9721,70 @@ Generated on: ${new Date().toLocaleString()}`;
           </p>
         </div>
 
-        {/* DW Document Library */}
+        {/* DW Main Document Drop Zone */}
+        <div className="mb-6 bg-emerald-50 dark:bg-emerald-900/20 p-5 rounded-lg border-2 border-emerald-300 dark:border-emerald-700">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h3 className="text-lg font-bold text-emerald-900 dark:text-emerald-100 flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Main Document
+            </h3>
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              Word Count: {dwInputText.trim() ? dwInputText.trim().split(/\s+/).length.toLocaleString() : 0} / 100,000
+            </span>
+          </div>
+
+          <div
+            className={`relative border-2 border-dashed rounded-lg p-6 text-center transition-all mb-3 ${
+              dwMainDocDragOver ? "border-emerald-500 bg-emerald-100 dark:bg-emerald-800/30"
+                : "border-emerald-300 dark:border-emerald-600 hover:border-emerald-400"
+            } cursor-pointer`}
+            onDragOver={(e) => { e.preventDefault(); setDwMainDocDragOver(true); }}
+            onDragEnter={(e) => { e.preventDefault(); setDwMainDocDragOver(true); }}
+            onDragLeave={(e) => { e.preventDefault(); setDwMainDocDragOver(false); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDwMainDocDragOver(false);
+              const files = Array.from(e.dataTransfer.files || []).filter(f =>
+                f.type === 'application/pdf' || f.type === 'application/msword' ||
+                f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                f.type === 'text/plain' || f.name.endsWith('.txt') || f.name.endsWith('.pdf') || f.name.endsWith('.doc') || f.name.endsWith('.docx')
+              );
+              if (files.length > 0) handleFileUpload(files[0], setDwInputText);
+            }}
+            data-testid="dropzone-dw-main"
+          >
+            <input type="file" accept=".pdf,.doc,.docx,.txt"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFileUpload(file, setDwInputText);
+                e.target.value = '';
+              }}
+              data-testid="input-dw-main-upload"
+            />
+            <Upload className="w-8 h-8 mx-auto mb-2 text-emerald-500" />
+            <p className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">
+              Drag & drop the document to rewrite, or click to browse
+            </p>
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+              PDF, Word (.doc, .docx), TXT - This is the text that will be rewritten
+            </p>
+          </div>
+
+          <Textarea value={dwInputText} onChange={(e) => setDwInputText(e.target.value)}
+            placeholder="Or paste your text directly here..."
+            className="min-h-[200px] font-mono text-sm"
+            data-testid="textarea-dw-input"
+          />
+          <TextStats text={dwInputText} showAiDetect={true} />
+        </div>
+
+        {/* DW Supporting Documents Drop Zone */}
         <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 p-5 rounded-lg border-2 border-blue-200 dark:border-blue-700">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <h3 className="text-lg font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
               <FileText className="w-5 h-5" />
-              Document Library
+              Supporting Documents
               <Badge variant="secondary" className="ml-2">{dwUploadedDocuments.length}/5</Badge>
             </h3>
             {dwUploadedDocuments.length > 0 && (
@@ -9773,102 +9829,41 @@ Generated on: ${new Date().toLocaleString()}`;
             />
             <Upload className="w-8 h-8 mx-auto mb-2 text-blue-500" />
             <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
-              {dwUploadedDocuments.length >= 5 ? "Library full - remove documents to add more" : "Drag & drop documents here or click to browse"}
+              {dwUploadedDocuments.length >= 5 ? "Library full - remove documents to add more" : "Drag & drop reference documents here or click to browse"}
             </p>
             <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-              PDF, Word (.doc, .docx), TXT - Up to 5 documents
+              PDF, Word (.doc, .docx), TXT - Up to 5 reference documents (auto-attached)
             </p>
           </div>
 
           {dwUploadedDocuments.length > 0 && (
             <div className="mt-4 space-y-2">
               <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                <span className="text-sm font-medium text-blue-800 dark:text-blue-200">Select documents to use:</span>
+                <span className="text-sm font-medium text-blue-800 dark:text-blue-200">Reference documents (automatically used by AI):</span>
                 <Badge variant="outline" className="text-xs">
-                  {dwSelectedDocumentIds.size} selected ({dwUploadedDocuments.filter(d => dwSelectedDocumentIds.has(d.id)).reduce((s, d) => s + d.wordCount, 0).toLocaleString()} words)
+                  {dwUploadedDocuments.reduce((s, d) => s + d.wordCount, 0).toLocaleString()} total words
                 </Badge>
               </div>
               {dwUploadedDocuments.map((doc, index) => (
                 <div key={doc.id}
-                  className={`rounded-md border transition-all ${
-                    dwSelectedDocumentIds.has(doc.id)
-                      ? "bg-blue-100 dark:bg-blue-800/40 border-blue-400 dark:border-blue-500"
-                      : "bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-700"
-                  }`}
+                  className="rounded-md border bg-blue-100 dark:bg-blue-800/40 border-blue-400 dark:border-blue-500"
                   data-testid={`dw-doc-item-${doc.id}`}
                 >
-                  <div className="flex items-center gap-3 p-3 cursor-pointer" onClick={() => toggleDwDocumentSelection(doc.id)}>
-                    <input type="checkbox" checked={dwSelectedDocumentIds.has(doc.id)}
-                      onChange={() => toggleDwDocumentSelection(doc.id)}
-                      className="w-4 h-4 accent-blue-600"
-                      onClick={(e) => e.stopPropagation()}
-                      data-testid={`dw-checkbox-doc-${doc.id}`}
-                    />
+                  <div className="flex items-center gap-3 p-3">
                     <span className="text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-200 dark:bg-blue-700 px-2 py-0.5 rounded">{index + 1}</span>
                     <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
                     <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate" title={doc.filename}>{doc.filename}</span>
                     <Badge variant="outline" className="text-xs flex-shrink-0">{doc.wordCount.toLocaleString()} words</Badge>
                     <Button variant="ghost" size="icon"
-                      onClick={(e) => { e.stopPropagation(); handleDwRemoveDocument(doc.id); }}
+                      onClick={() => handleDwRemoveDocument(doc.id)}
                       data-testid={`button-remove-dw-doc-${doc.id}`}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
               ))}
-
-              {dwSelectedDocumentIds.size > 0 && (
-                <div className="mt-4 space-y-3">
-                  <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md text-xs text-blue-700 dark:text-blue-300 space-y-1">
-                    <p className="font-medium">How it works:</p>
-                    <p>These documents will be attached as supporting reference material for the AI to draw from.</p>
-                    <p>Enter the text you want rewritten in the Input Text box below, then add your instructions.</p>
-                  </div>
-                  <Button onClick={handleDwLoadSelectedDocuments}
-                    className="w-full bg-blue-600 text-white"
-                    data-testid="button-load-dw-selected">
-                    <ArrowRight className="w-4 h-4 mr-2" />
-                    Attach {dwSelectedDocumentIds.size} Selected Document{dwSelectedDocumentIds.size > 1 ? 's' : ''} as Reference
-                  </Button>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                    <span className="text-blue-600 dark:text-blue-400 font-medium">{dwSelectedDocumentIds.size} document{dwSelectedDocumentIds.size > 1 ? 's' : ''}</span> will be sent to the AI as background reference
-                  </p>
-                </div>
-              )}
             </div>
           )}
-        </div>
-
-        {/* DW Input Area */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-            <label className="block text-sm font-semibold text-emerald-800 dark:text-emerald-200">
-              Input Text (up to 100,000 words)
-            </label>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-600 dark:text-gray-400">
-                Word Count: {dwInputText.trim() ? dwInputText.trim().split(/\s+/).length.toLocaleString() : 0} / 100,000
-              </span>
-              <label className="cursor-pointer">
-                <input type="file" accept=".pdf,.doc,.docx,.txt" className="hidden"
-                  onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileUpload(file, setDwInputText); }}
-                  data-testid="input-dw-upload"
-                />
-                <Button variant="outline" size="sm"
-                  className="border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
-                  onClick={(e) => { e.preventDefault(); (e.currentTarget.previousElementSibling as HTMLInputElement)?.click(); }}
-                  data-testid="button-dw-upload">
-                  <Upload className="w-4 h-4 mr-2" /> Upload Document
-                </Button>
-              </label>
-            </div>
-          </div>
-          <Textarea value={dwInputText} onChange={(e) => setDwInputText(e.target.value)}
-            placeholder="Paste complex, obscure, or muddled text here... or drag & drop a document (PDF, Word, TXT)"
-            className="min-h-[200px] font-mono text-sm"
-            data-testid="textarea-dw-input"
-          />
-          <TextStats text={dwInputText} showAiDetect={true} />
         </div>
 
         {/* DW Target Word Count */}
