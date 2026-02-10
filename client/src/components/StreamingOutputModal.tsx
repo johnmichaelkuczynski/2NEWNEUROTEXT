@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Copy, Download, X, Loader2, CheckCircle2, GripHorizontal, Minimize2, Maximize2, AlertCircle } from "lucide-react";
+import { Copy, Download, X, Loader2, CheckCircle2, GripHorizontal, Minimize2, Maximize2, AlertCircle, ChevronDown, ChevronRight, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useCredits } from "@/hooks/use-credits";
 import { getFreemiumPreview } from "@/lib/freemiumPreview";
@@ -32,6 +32,8 @@ interface StreamingOutputModalProps {
 
 export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = false, projectId }: StreamingOutputModalProps) {
   const [content, setContent] = useState<string>('');
+  const [skeletonText, setSkeletonText] = useState<string>('');
+  const [showSkeleton, setShowSkeleton] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentSection, setCurrentSection] = useState<string>('');
   const [sectionsCompleted, setSectionsCompleted] = useState(0);
@@ -110,6 +112,8 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
 
   const clearContent = useCallback(() => {
     setContent('');
+    setSkeletonText('');
+    setShowSkeleton(false);
     contentRef.current = '';
     wordCountRef.current = 0;
     setProgress(0);
@@ -277,13 +281,7 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
               setTotalSections(data.totalChunks);
             }
             if (data.chunkText) {
-              setContent(prev => {
-                const outlineHeader = '=== DOCUMENT SKELETON ===\n\n';
-                const newContent = outlineHeader + data.chunkText + '\n\n=== GENERATING SECTIONS ===\n';
-                contentRef.current = newContent;
-                return newContent;
-              });
-              setTimeout(() => scrollToBottomRef.current(), 100);
+              setSkeletonText(data.chunkText);
             }
             break;
 
@@ -481,6 +479,24 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
 
           <ScrollArea className="flex-1 p-4">
             <div ref={scrollRef} className="whitespace-pre-wrap font-mono text-sm">
+              {skeletonText && (
+                <div className="mb-4">
+                  <button
+                    onClick={() => setShowSkeleton(!showSkeleton)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1"
+                    data-testid="button-toggle-skeleton"
+                  >
+                    {showSkeleton ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                    <FileText className="w-3 h-3" />
+                    Document Skeleton / Metadata
+                  </button>
+                  {showSkeleton && (
+                    <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded border border-amber-200 dark:border-amber-700 text-xs max-h-[200px] overflow-y-auto mb-3">
+                      <pre className="whitespace-pre-wrap font-mono text-amber-900 dark:text-amber-200">{skeletonText}</pre>
+                    </div>
+                  )}
+                </div>
+              )}
               {content ? (
                 <>
                   {(() => {

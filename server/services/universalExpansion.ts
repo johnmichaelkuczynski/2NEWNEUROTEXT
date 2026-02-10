@@ -846,6 +846,8 @@ PROGRESSIVE ARGUMENT RULES (MANDATORY):
 9. DO NOT start with the section title - the system will add it.
 10. DO NOT write a conclusion yet - more content will follow.
 11. End at a natural paragraph break, ready for continuation.
+12. DO NOT include skeleton metadata markers in your output (no "UNIQUE CONCEPTUAL CONTRIBUTION:", "PREREQUISITE DEPENDENCY:", "KEY POINTS:", "WHAT THE READER KNOWS AFTER THIS SECTION:", "SECTION SUMMARY:" etc.). Write only the actual prose content.
+13. DO NOT include word count annotations or section word targets in the output text.
 
 Write the BEGINNING of this section (${wordsToRequest} words):`;
       }
@@ -917,7 +919,8 @@ CRITICAL REQUIREMENTS:
 6. This must be substantive content - every word must carry meaning, NO PUFFERY
 7. NO MARKDOWN FORMATTING - use plain text only
 8. BANNED: "furthermore", "this analysis extends to", "as we have seen" - these mask repetition
-${wordsRemaining > 4000 ? '9. DO NOT conclude yet - more content will follow' : '9. You may write a concluding paragraph if appropriate'}
+9. DO NOT include skeleton metadata markers (no "UNIQUE CONCEPTUAL CONTRIBUTION:", "PREREQUISITE DEPENDENCY:", "KEY POINTS:", "WHAT THE READER KNOWS AFTER THIS SECTION:" etc.). Write only actual prose content.
+${wordsRemaining > 4000 ? '10. DO NOT conclude yet - more content will follow' : '10. You may write a concluding paragraph if appropriate'}
 
 Continue writing NOW (${wordsToRequest} more words):`;
       }
@@ -981,9 +984,57 @@ Continue writing NOW (${wordsToRequest} more words):`;
   
   console.log(`[Section ${sectionName}] COMPLETE: ${currentWordCount} words in ${continuationAttempts} chunks (target: ${targetWordCount})`);
 
-  const newPointsCovered = extractKeyPoints(accumulatedContent, sectionName);
+  const cleanedContent = stripSkeletonMetadata(accumulatedContent);
+  const newPointsCovered = extractKeyPoints(cleanedContent, sectionName);
   
-  return { content: accumulatedContent, newPointsCovered };
+  return { content: cleanedContent, newPointsCovered };
+}
+
+function stripSkeletonMetadata(text: string): string {
+  const lines = text.split('\n');
+  const cleanLines: string[] = [];
+  
+  const metadataPatterns = [
+    /^\*{0,2}UNIQUE CONCEPTUAL CONTRIBUTION\*{0,2}\s*:/i,
+    /^\*{0,2}PREREQUISITE DEPENDENCY\*{0,2}\s*:/i,
+    /^\*{0,2}WHAT THE READER KNOWS\b/i,
+    /^\*{0,2}SECTION SUMMARY\*{0,2}\s*:/i,
+    /^\*{0,2}CONCEPTUAL CONTRIBUTION\*{0,2}\s*:/i,
+    /^\*{0,2}KEY POINTS\*{0,2}\s*:/i,
+    /^={2,}\s*DOCUMENT SKELETON\s*={2,}$/i,
+    /^={2,}\s*GENERATING SECTIONS\s*={2,}$/i,
+  ];
+  
+  let skipNextBlank = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    
+    const isMetadata = metadataPatterns.some(p => p.test(trimmed));
+    if (isMetadata) {
+      skipNextBlank = true;
+      continue;
+    }
+    
+    if (skipNextBlank && trimmed === '') {
+      skipNextBlank = false;
+      continue;
+    }
+    skipNextBlank = false;
+    
+    if (trimmed === '---') continue;
+    
+    const wordCountInHeader = /^(#+\s+.+?)\s*\(\s*[\d,]+\s*words?\s*\)/i;
+    const headerMatch = trimmed.match(wordCountInHeader);
+    if (headerMatch) {
+      cleanLines.push(headerMatch[1].trim());
+      continue;
+    }
+    
+    cleanLines.push(lines[i]);
+  }
+  
+  return cleanLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function extractKeyPoints(sectionContent: string, sectionName: string): string[] {
