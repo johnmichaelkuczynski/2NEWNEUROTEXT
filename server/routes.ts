@@ -1633,12 +1633,12 @@ ${externalKnowledge}`;
       console.log(`[Reconstruction] Created project ${project.id}: "${project.title}" (${inputWordCount} words)`);
       
       (async () => {
+        const { broadcastGenerationChunk } = await import('./services/ccStreamingService');
         try {
           let effectiveInstructions = customInstructions || '';
           const parsedTarget = targetWordCount ? parseInt(targetWordCount) : 0;
           
           const { universalExpand } = await import('./services/universalExpansion');
-          const { broadcastGenerationChunk } = await import('./services/ccStreamingService');
           
           if (parsedTarget > 0) {
             const hasExpandDirective = /expand\s*(to|into)?\s*\d+/i.test(effectiveInstructions);
@@ -1734,6 +1734,12 @@ ${externalKnowledge}`;
           console.error(`[Reconstruction] Failed project ${project.id}:`, error.message);
           await storage.updateReconstructionProject(project.id, {
             status: 'failed'
+          });
+          broadcastGenerationChunk({
+            type: 'error',
+            projectId: project.id,
+            sectionTitle: error.message || 'Generation failed',
+            progress: 0
           });
         }
       })();

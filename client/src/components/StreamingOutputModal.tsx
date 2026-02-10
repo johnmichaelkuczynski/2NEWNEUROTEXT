@@ -2,14 +2,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Copy, Download, X, Loader2, CheckCircle2, GripHorizontal, Minimize2, Maximize2 } from "lucide-react";
+import { Copy, Download, X, Loader2, CheckCircle2, GripHorizontal, Minimize2, Maximize2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useCredits } from "@/hooks/use-credits";
 import { getFreemiumPreview } from "@/lib/freemiumPreview";
 import { PaywallOverlay } from "./PaywallOverlay";
 
 interface StreamChunk {
-  type: 'section_complete' | 'progress' | 'outline' | 'complete';
+  type: 'section_complete' | 'progress' | 'outline' | 'complete' | 'error';
   projectId?: number;
   sectionTitle?: string;
   chunkText?: string;
@@ -19,6 +19,7 @@ interface StreamChunk {
   stage?: string;
   wordCount?: number;
   totalWordCount?: number;
+  message?: string;
 }
 
 interface StreamingOutputModalProps {
@@ -160,11 +161,18 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
               pollFallbackRef.current = null;
             }
           } else if (proj.status === 'failed') {
-            setCurrentSection('Generation failed.');
+            setIsComplete(true);
+            setProgress(0);
+            setCurrentSection('Error: Generation failed. Please try with a shorter document or fewer supporting files.');
             if (pollFallbackRef.current) {
               clearInterval(pollFallbackRef.current);
               pollFallbackRef.current = null;
             }
+            toast({
+              title: "Generation Failed",
+              description: "The document may be too large to process. Try reducing the input size.",
+              variant: "destructive",
+            });
           } else if (proj.status === 'processing' && proj.reconstructedText) {
             const wc = proj.reconstructedText.trim().split(/\s+/).length;
             wordCountRef.current = wc;
@@ -181,7 +189,7 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
         } catch (e) {
           console.error('[StreamingModal] Polling fallback error:', e);
         }
-      }, 8000);
+      }, 4000);
     };
 
     ws.onopen = () => {
@@ -189,10 +197,8 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
       wsConnectedRef.current = true;
       setCurrentSection('Waiting for generation to start...');
       setTimeout(() => {
-        if (!receivedAnyDataRef.current) {
-          startPollingFallback();
-        }
-      }, 5000);
+        startPollingFallback();
+      }, 3000);
     };
 
     ws.onerror = () => {
@@ -202,9 +208,7 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
 
     ws.onclose = () => {
       wsConnectedRef.current = false;
-      if (!receivedAnyDataRef.current) {
-        startPollingFallback();
-      }
+      startPollingFallback();
     };
 
     ws.onmessage = (event) => {
@@ -289,6 +293,22 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
             toast({
               title: "Generation Complete",
               description: `${data.totalWordCount?.toLocaleString() || wordCountRef.current.toLocaleString()} words generated successfully.`,
+            });
+            break;
+
+          case 'error':
+            setIsComplete(true);
+            setProgress(0);
+            const errorMsg = data.sectionTitle || data.message || 'Generation failed';
+            setCurrentSection(`Error: ${errorMsg}`);
+            if (pollFallbackRef.current) {
+              clearInterval(pollFallbackRef.current);
+              pollFallbackRef.current = null;
+            }
+            toast({
+              title: "Generation Failed",
+              description: errorMsg,
+              variant: "destructive",
             });
             break;
         }
@@ -382,13 +402,15 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <GripHorizontal className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-          {isComplete ? (
+          {isComplete && currentSection.startsWith('Error:') ? (
+            <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0" />
+          ) : isComplete ? (
             <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
           ) : (
             <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
           )}
           <span className="font-medium text-sm truncate">
-            {isComplete ? 'Complete' : 'Generating...'}
+            {isComplete && currentSection.startsWith('Error:') ? 'Failed' : isComplete ? 'Complete' : 'Generating...'}
           </span>
           {!isMinimized && (
             <span className="text-xs text-muted-foreground">
@@ -471,8 +493,10 @@ export function StreamingOutputModal({ isOpen, onClose, onComplete, startNew = f
                   })()}
                 </>
               ) : (
-                <span className="text-muted-foreground italic">
-                  Waiting for content... The document will appear here section by section as it is generated.
+                <span className={`italic ${currentSection.startsWith('Error:') ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {currentSection.startsWith('Error:') 
+                    ? currentSection
+                    : 'Waiting for content... The document will appear here section by section as it is generated.'}
                 </span>
               )}
             </div>
