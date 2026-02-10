@@ -170,6 +170,8 @@ const DissertationWizardPage: React.FC = () => {
 
   const [inputText, setInputText] = useState("");
   const [customInstructions, setCustomInstructions] = useState("");
+  const [sourceMaterial, setSourceMaterial] = useState("");
+  const [sourceMaterialNames, setSourceMaterialNames] = useState<string[]>([]);
   const [targetWordCount, setTargetWordCount] = useState("");
   const [llmProvider, setLlmProvider] = useState("zhi1");
   const [fidelityLevel, setFidelityLevel] = useState<"conservative" | "aggressive">("aggressive");
@@ -314,6 +316,8 @@ const DissertationWizardPage: React.FC = () => {
     setInputText("");
     setOutput("");
     setCustomInstructions("");
+    setSourceMaterial("");
+    setSourceMaterialNames([]);
     setTargetWordCount("");
   };
 
@@ -324,21 +328,19 @@ const DissertationWizardPage: React.FC = () => {
 
     if (primaryDocs.length > 0 && sourceDocs.length > 0) {
       setInputText(combineDocuments(primaryDocs));
-      const sourceBlock = `\n\n[SOURCE MATERIAL - USE AS REFERENCE]\n${combineDocuments(sourceDocs)}\n[END SOURCE MATERIAL]`;
-      const existing = customInstructions.trim();
-      const alreadyHasSource = existing.includes('[SOURCE MATERIAL');
-      if (alreadyHasSource) {
-        const cleaned = existing.replace(/\n*\[SOURCE MATERIAL[\s\S]*?\[END SOURCE MATERIAL\]/g, '').trim();
-        setCustomInstructions(cleaned ? `${cleaned}${sourceBlock}` : sourceBlock.trim());
-      } else {
-        setCustomInstructions(existing ? `${existing}${sourceBlock}` : sourceBlock.trim());
-      }
+      const sourceBlock = `[SOURCE MATERIAL - USE AS REFERENCE]\n${combineDocuments(sourceDocs)}\n[END SOURCE MATERIAL]`;
+      setSourceMaterial(sourceBlock);
+      setSourceMaterialNames(sourceDocs.map(d => d.filename));
       toast({ title: "Documents Ready", description: `Primary text loaded. ${sourceDocs.length} source doc(s) attached as reference.` });
     } else if (primaryDocs.length > 0) {
       setInputText(combineDocuments(primaryDocs));
+      setSourceMaterial("");
+      setSourceMaterialNames([]);
       toast({ title: "Primary Text Loaded", description: "Write your instructions below, then click DISSERTATE." });
     } else {
       setInputText(combineDocuments(selectedDocs));
+      setSourceMaterial("");
+      setSourceMaterialNames([]);
       toast({ title: "Documents Loaded", description: `${selectedDocs.length} document(s) loaded. Tip: Mark one as PRIMARY TEXT.` });
     }
   };
@@ -370,6 +372,13 @@ const DissertationWizardPage: React.FC = () => {
 
     const effectiveInputText = effectiveText.trim().length > 0 ? effectiveText : effectiveInstructions;
 
+    let finalInstructions = effectiveInstructions;
+    if (sourceMaterial.trim()) {
+      finalInstructions = finalInstructions
+        ? `${finalInstructions}\n\n${sourceMaterial}`
+        : sourceMaterial;
+    }
+
     setProcessing(true);
     setProgress("Starting coherence-based reconstruction...");
     setOutput("");
@@ -384,7 +393,7 @@ const DissertationWizardPage: React.FC = () => {
           text: effectiveInputText,
           title: "Dissertation Wizard Job",
           targetWordCount: targetWC > 0 ? targetWC : undefined,
-          customInstructions: effectiveInstructions,
+          customInstructions: finalInstructions,
           llmProvider: llmProvider,
           fidelityLevel: fidelityLevel,
         }),
@@ -665,6 +674,31 @@ const DissertationWizardPage: React.FC = () => {
             Provide specific guidance about format or content. The app will follow your instructions exactly.
           </p>
         </div>
+
+        {sourceMaterialNames.length > 0 && (
+          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-700 mt-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+                  Source Material Attached ({sourceMaterialNames.length} document{sourceMaterialNames.length > 1 ? 's' : ''})
+                </span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => { setSourceMaterial(""); setSourceMaterialNames([]); }}
+                data-testid="button-dw-clear-source-material">
+                <X className="w-4 h-4 mr-1" /> Remove
+              </Button>
+            </div>
+            <div className="mt-2 space-y-1">
+              {sourceMaterialNames.map((name, i) => (
+                <p key={i} className="text-xs text-blue-700 dark:text-blue-300 pl-6">{name}</p>
+              ))}
+            </div>
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 pl-6">
+              These documents will be sent to the AI as reference material (not shown in Instructions).
+            </p>
+          </div>
+        )}
 
         {/* LLM Provider Selector */}
         <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 mt-4">

@@ -342,6 +342,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const dwPollRef = useRef<NodeJS.Timeout | null>(null);
   const [dwInputText, setDwInputText] = useState("");
   const [dwCustomInstructions, setDwCustomInstructions] = useState("");
+  const [dwSourceMaterial, setDwSourceMaterial] = useState("");
+  const [dwSourceMaterialNames, setDwSourceMaterialNames] = useState<string[]>([]);
   const [dwTargetWordCount, setDwTargetWordCount] = useState("");
   const [dwLlmProvider, setDwLlmProvider] = useState("zhi5");
   const [dwFidelityLevel, setDwFidelityLevel] = useState<"conservative" | "aggressive">("aggressive");
@@ -1121,21 +1123,19 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     const sourceDocs = selectedDocs.filter(d => d.role === 'source');
     if (primaryDocs.length > 0 && sourceDocs.length > 0) {
       setDwInputText(dwCombineDocuments(primaryDocs));
-      const sourceBlock = `\n\n[SOURCE MATERIAL - USE AS REFERENCE]\n${dwCombineDocuments(sourceDocs)}\n[END SOURCE MATERIAL]`;
-      const existing = dwCustomInstructions.trim();
-      const alreadyHasSource = existing.includes('[SOURCE MATERIAL');
-      if (alreadyHasSource) {
-        const cleaned = existing.replace(/\n*\[SOURCE MATERIAL[\s\S]*?\[END SOURCE MATERIAL\]/g, '').trim();
-        setDwCustomInstructions(cleaned ? `${cleaned}${sourceBlock}` : sourceBlock.trim());
-      } else {
-        setDwCustomInstructions(existing ? `${existing}${sourceBlock}` : sourceBlock.trim());
-      }
+      const sourceBlock = `[SOURCE MATERIAL - USE AS REFERENCE]\n${dwCombineDocuments(sourceDocs)}\n[END SOURCE MATERIAL]`;
+      setDwSourceMaterial(sourceBlock);
+      setDwSourceMaterialNames(sourceDocs.map(d => d.filename));
       toast({ title: "Documents Ready", description: `Primary text loaded. ${sourceDocs.length} source doc(s) attached as reference.` });
     } else if (primaryDocs.length > 0) {
       setDwInputText(dwCombineDocuments(primaryDocs));
+      setDwSourceMaterial("");
+      setDwSourceMaterialNames([]);
       toast({ title: "Primary Text Loaded", description: "Write your instructions below, then click DISSERTATE." });
     } else {
       setDwInputText(dwCombineDocuments(selectedDocs));
+      setDwSourceMaterial("");
+      setDwSourceMaterialNames([]);
       toast({ title: "Documents Loaded", description: `${selectedDocs.length} document(s) loaded. Tip: Mark one as PRIMARY TEXT.` });
     }
   };
@@ -1170,6 +1170,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setDwInputText("");
     setDwOutput("");
     setDwCustomInstructions("");
+    setDwSourceMaterial("");
+    setDwSourceMaterialNames([]);
     setDwTargetWordCount("");
   };
 
@@ -1194,6 +1196,14 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       }
     }
     const effectiveInputText = effectiveText.trim().length > 0 ? effectiveText : effectiveInstructions;
+
+    let finalInstructions = effectiveInstructions;
+    if (dwSourceMaterial.trim()) {
+      finalInstructions = finalInstructions
+        ? `${finalInstructions}\n\n${dwSourceMaterial}`
+        : dwSourceMaterial;
+    }
+
     setDwProcessing(true);
     setDwProgress("Starting coherence-based reconstruction...");
     setDwOutput("");
@@ -1207,7 +1217,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           text: effectiveInputText,
           title: "Dissertation Wizard Job",
           targetWordCount: targetWC > 0 ? targetWC : undefined,
-          customInstructions: effectiveInstructions,
+          customInstructions: finalInstructions,
           llmProvider: dwLlmProvider,
           fidelityLevel: dwFidelityLevel,
         }),
@@ -9944,6 +9954,31 @@ Generated on: ${new Date().toLocaleString()}`;
             Provide specific guidance about format or content. The app will follow your instructions exactly.
           </p>
         </div>
+
+        {dwSourceMaterialNames.length > 0 && (
+          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-700 mt-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+                  Source Material Attached ({dwSourceMaterialNames.length} document{dwSourceMaterialNames.length > 1 ? 's' : ''})
+                </span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => { setDwSourceMaterial(""); setDwSourceMaterialNames([]); }}
+                data-testid="button-hp-dw-clear-source-material">
+                <X className="w-4 h-4 mr-1" /> Remove
+              </Button>
+            </div>
+            <div className="mt-2 space-y-1">
+              {dwSourceMaterialNames.map((name, i) => (
+                <p key={i} className="text-xs text-blue-700 dark:text-blue-300 pl-6">{name}</p>
+              ))}
+            </div>
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 pl-6">
+              These documents will be sent to the AI as reference material (not shown in Instructions).
+            </p>
+          </div>
+        )}
 
         {/* DW LLM Provider Selector */}
         <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 mt-4">
