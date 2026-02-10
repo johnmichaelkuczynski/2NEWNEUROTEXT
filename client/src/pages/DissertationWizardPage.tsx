@@ -162,7 +162,6 @@ interface DwDocument {
   filename: string;
   content: string;
   wordCount: number;
-  role: 'primary' | 'source';
 }
 
 const DissertationWizardPage: React.FC = () => {
@@ -242,7 +241,7 @@ const DissertationWizardPage: React.FC = () => {
         const words = data.content.trim().split(/\s+/).filter(Boolean);
         const docId = `dw-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         newIds.push(docId);
-        newDocs.push({ id: docId, filename: file.name, content: data.content, wordCount: words.length, role: 'source' });
+        newDocs.push({ id: docId, filename: file.name, content: data.content, wordCount: words.length });
       }
       const allDocs = [...uploadedDocuments, ...newDocs];
       setUploadedDocuments(allDocs);
@@ -256,10 +255,6 @@ const DissertationWizardPage: React.FC = () => {
 
   const toggleDocumentSelection = (docId: string) => {
     setSelectedDocumentIds(prev => { const newSet = new Set(prev); if (newSet.has(docId)) newSet.delete(docId); else newSet.add(docId); return newSet; });
-  };
-
-  const toggleDocumentRole = (docId: string) => {
-    setUploadedDocuments(prev => prev.map(d => d.id === docId ? { ...d, role: d.role === 'primary' ? 'source' as const : 'primary' as const } : d));
   };
 
   const clearDocumentLibrary = () => {
@@ -323,26 +318,12 @@ const DissertationWizardPage: React.FC = () => {
 
   const handleLoadSelectedDocuments = () => {
     const selectedDocs = uploadedDocuments.filter(d => selectedDocumentIds.has(d.id));
-    const primaryDocs = selectedDocs.filter(d => d.role === 'primary');
-    const sourceDocs = selectedDocs.filter(d => d.role === 'source');
+    if (selectedDocs.length === 0) return;
 
-    if (primaryDocs.length > 0 && sourceDocs.length > 0) {
-      setInputText(combineDocuments(primaryDocs));
-      const sourceBlock = `[SOURCE MATERIAL - USE AS REFERENCE]\n${combineDocuments(sourceDocs)}\n[END SOURCE MATERIAL]`;
-      setSourceMaterial(sourceBlock);
-      setSourceMaterialNames(sourceDocs.map(d => d.filename));
-      toast({ title: "Documents Ready", description: `Primary text loaded. ${sourceDocs.length} source doc(s) attached as reference.` });
-    } else if (primaryDocs.length > 0) {
-      setInputText(combineDocuments(primaryDocs));
-      setSourceMaterial("");
-      setSourceMaterialNames([]);
-      toast({ title: "Primary Text Loaded", description: "Write your instructions below, then click DISSERTATE." });
-    } else {
-      setInputText(combineDocuments(selectedDocs));
-      setSourceMaterial("");
-      setSourceMaterialNames([]);
-      toast({ title: "Documents Loaded", description: `${selectedDocs.length} document(s) loaded. Tip: Mark one as PRIMARY TEXT.` });
-    }
+    const sourceBlock = `[SOURCE MATERIAL - USE AS REFERENCE]\n${combineDocuments(selectedDocs)}\n[END SOURCE MATERIAL]`;
+    setSourceMaterial(sourceBlock);
+    setSourceMaterialNames(selectedDocs.map(d => d.filename));
+    toast({ title: "Reference Material Attached", description: `${selectedDocs.length} document${selectedDocs.length > 1 ? 's' : ''} attached as reference. Enter your text in the Input box and instructions below.` });
   };
 
   const handleDissertate = async () => {
@@ -525,20 +506,11 @@ const DissertationWizardPage: React.FC = () => {
                   {selectedDocumentIds.size} selected ({uploadedDocuments.filter(d => selectedDocumentIds.has(d.id)).reduce((s, d) => s + d.wordCount, 0).toLocaleString()} words)
                 </Badge>
               </div>
-              <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-700">
-                <p className="text-xs font-medium text-amber-800 dark:text-amber-200 mb-1">Assign a role to each document:</p>
-                <p className="text-xs text-amber-700 dark:text-amber-300">
-                  <span className="font-bold text-emerald-700 dark:text-emerald-400">PRIMARY TEXT</span> = the text to be rewritten/expanded.{' '}
-                  <span className="font-bold text-blue-700 dark:text-blue-400">SOURCE MATERIAL</span> = reference documents used to inform the rewrite.
-                </p>
-              </div>
               {uploadedDocuments.map((doc, index) => (
                 <div key={doc.id}
                   className={`rounded-md border transition-all ${
                     selectedDocumentIds.has(doc.id)
-                      ? doc.role === 'primary'
-                        ? "bg-emerald-100 dark:bg-emerald-800/40 border-emerald-400 dark:border-emerald-500"
-                        : "bg-blue-100 dark:bg-blue-800/40 border-blue-400 dark:border-blue-500"
+                      ? "bg-blue-100 dark:bg-blue-800/40 border-blue-400 dark:border-blue-500"
                       : "bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-700"
                   }`}
                   data-testid={`dw-doc-item-${doc.id}`}
@@ -560,18 +532,6 @@ const DissertationWizardPage: React.FC = () => {
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
-                  <div className="flex items-center gap-2 px-3 pb-3">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Role:</span>
-                    <Badge
-                      variant={doc.role === 'primary' ? 'default' : 'secondary'}
-                      className={`cursor-pointer text-xs ${doc.role === 'primary' ? "bg-emerald-600 text-white" : ""}`}
-                      onClick={() => toggleDocumentRole(doc.id)}
-                      data-testid={`badge-role-dw-doc-${doc.id}`}
-                    >
-                      {doc.role === 'primary' ? 'PRIMARY TEXT' : 'SOURCE MATERIAL'}
-                    </Badge>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">(click to change)</span>
-                  </div>
                 </div>
               ))}
 
@@ -579,29 +539,18 @@ const DissertationWizardPage: React.FC = () => {
                 <div className="mt-4 space-y-3">
                   <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md text-xs text-blue-700 dark:text-blue-300 space-y-1">
                     <p className="font-medium">How it works:</p>
-                    <p>PRIMARY TEXT goes into the Input box below (this is what gets rewritten/expanded).</p>
-                    <p>SOURCE MATERIAL gets attached as reference for the AI to borrow from.</p>
-                    <p>Then write your instructions in the "Instructions" box below.</p>
+                    <p>These documents will be attached as supporting reference material for the AI to draw from.</p>
+                    <p>Enter the text you want rewritten in the Input Text box below, then add your instructions.</p>
                   </div>
                   <Button onClick={handleLoadSelectedDocuments}
                     className="w-full bg-blue-600 text-white"
                     data-testid="button-load-dw-selected">
                     <ArrowRight className="w-4 h-4 mr-2" />
-                    Load {selectedDocumentIds.size} Selected Document{selectedDocumentIds.size > 1 ? 's' : ''} into Input
+                    Attach {selectedDocumentIds.size} Selected Document{selectedDocumentIds.size > 1 ? 's' : ''} as Reference
                   </Button>
-                  {(() => {
-                    const selectedDocs = uploadedDocuments.filter(d => selectedDocumentIds.has(d.id));
-                    const primaryCount = selectedDocs.filter(d => d.role === 'primary').length;
-                    const sourceCount = selectedDocs.filter(d => d.role === 'source').length;
-                    return (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                        {primaryCount > 0 && <span className="text-emerald-600 dark:text-emerald-400 font-medium">{primaryCount} primary text{primaryCount > 1 ? 's' : ''}</span>}
-                        {primaryCount > 0 && sourceCount > 0 && ' + '}
-                        {sourceCount > 0 && <span className="text-blue-600 dark:text-blue-400 font-medium">{sourceCount} source doc{sourceCount > 1 ? 's' : ''}</span>}
-                        {primaryCount === 0 && sourceCount > 0 && ' (no primary text assigned - all will load as input)'}
-                      </p>
-                    );
-                  })()}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                    <span className="text-blue-600 dark:text-blue-400 font-medium">{selectedDocumentIds.size} document{selectedDocumentIds.size > 1 ? 's' : ''}</span> will be sent to the AI as background reference
+                  </p>
                 </div>
               )}
             </div>
