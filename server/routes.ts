@@ -3146,13 +3146,127 @@ Structural understanding is always understanding of relationships. Observational
 
       if (mode === "reconstruction") {
         // PROTOCOL: User instructions are ALWAYS obeyed. No thresholds. No "simple mode".
-        // Check if user has expansion instructions FIRST - this takes priority over position-list detection
-        // because expansion instructions enable streaming which is critical for large outputs
         const { hasExpansionInstructions, universalExpand, parseExpansionInstructions } = await import('./services/universalExpansion');
         const { broadcastGenerationChunk } = await import('./services/ccStreamingService');
         
-        // Check for streaming mode
         const streamMode = req.query.stream === 'true';
+        
+        // DIRECT FORMAT DETECTION: If user wants bullet points, lists, summaries etc.
+        // bypass the academic skeleton framework entirely and use a direct LLM call
+        const directFormatPatterns = [
+          /\d+\s*(?:BULLET|BULLETING)\s*POINTS?/i,
+          /SUMMARIZE\s*(?:THIS\s*)?(?:AS|INTO|IN)\s*\d+/i,
+          /\d+\s*(?:KEY\s*)?(?:POINTS?|ITEMS?|TAKEAWAYS?|HIGHLIGHTS?|NOTES?)/i,
+          /(?:LIST|ENUMERATE|OUTLINE)\s*(?:THE\s*)?\d+/i,
+          /BULLET\s*POINT\s*(?:SUMMARY|LIST|FORMAT)/i,
+          /SUMMARIZE\s*(?:THIS\s*)?(?:AS|IN|INTO)\s*(?:BULLET|BULLETING)\s*POINTS?/i,
+        ];
+        
+        const isDirectFormat = effectiveInstructions && directFormatPatterns.some(p => p.test(effectiveInstructions));
+        
+        if (isDirectFormat && hasText) {
+          // Strip auto-prepended "EXPAND TO X WORDS." directive - not relevant for direct format
+          const cleanedInstructions = effectiveInstructions.replace(/^EXPAND\s+TO\s+\d+\s+WORDS?\.\s*/i, '').trim();
+          console.log(`[Direct Format] Detected non-prose format request: "${cleanedInstructions.substring(0, 100)}"`);
+          
+          // Extract the count the user wants (e.g., "150" from "150 BULLET POINTS")
+          const countMatch = cleanedInstructions.match(/(\d+)\s*(?:BULLET|BULLETING|KEY\s*)?(?:POINTS?|ITEMS?|TAKEAWAYS?|HIGHLIGHTS?|NOTES?)/i);
+          const requestedCount = countMatch ? parseInt(countMatch[1]) : null;
+          
+          // FREEMIUM CHECK: Users without credits get limited output
+          if (!hasCredits) {
+            console.log(`[Direct Format] FREEMIUM: User has no credits - limiting output`);
+          }
+          
+          try {
+            const Anthropic = (await import('@anthropic-ai/sdk')).default;
+            const anthropic = new Anthropic();
+            
+            const truncatedText = effectiveText.length > 180000 ? effectiveText.substring(0, 180000) : effectiveText;
+            
+            // For freemium users, cap the requested count
+            const effectiveCount = requestedCount
+              ? (!hasCredits ? Math.min(requestedCount, 20) : requestedCount)
+              : null;
+            
+            if (!hasCredits && requestedCount && requestedCount > 20) {
+              console.log(`[Direct Format] FREEMIUM: Capping ${requestedCount} items to 20`);
+            }
+            
+            const directPrompt = `You are given a document. Follow the user's instructions EXACTLY. Do not add commentary, abstracts, introductions, or any framing. Do not add headers like "EXPANDED ANALYSIS" or "Key Points". Just produce EXACTLY what the user asked for.
+
+USER'S INSTRUCTIONS: ${cleanedInstructions}
+
+${effectiveCount ? `CRITICAL: You MUST produce EXACTLY ${effectiveCount} items. Not ${Math.max(1, effectiveCount - 50)}. Not ${Math.max(1, effectiveCount - 10)}. EXACTLY ${effectiveCount}. Count them as you write. Number each item sequentially from 1 to ${effectiveCount}.` : ''}
+
+DOCUMENT:
+${truncatedText}
+
+NOW FOLLOW THE INSTRUCTIONS ABOVE. Output ONLY what was requested. No commentary. No framing. No abstracts. No introductions. Start directly with item 1.${effectiveCount ? ` Remember: EXACTLY ${effectiveCount} items, numbered 1 through ${effectiveCount}.` : ''}`;
+
+            const response = await anthropic.messages.create({
+              model: "claude-sonnet-4-20250514",
+              max_tokens: 8000,
+              messages: [{ role: "user", content: directPrompt }]
+            }, { timeout: 300000 });
+            
+            let output = response.content[0].type === 'text' ? response.content[0].text : '';
+            
+            // If we got cut off (max_tokens) and didn't finish, continue
+            if (response.stop_reason === 'max_tokens' && effectiveCount) {
+              const lastNumber = output.match(/(\d+)\.\s+[^\n]+/g);
+              const lastCount = lastNumber ? lastNumber.length : 0;
+              
+              if (lastCount < effectiveCount) {
+                console.log(`[Direct Format] Got ${lastCount}/${effectiveCount} items, continuing...`);
+                const continuationPrompt = `Continue from where you left off. You were producing ${effectiveCount} items about a document. You completed ${lastCount} items. Continue from item ${lastCount + 1} through ${effectiveCount}. Output ONLY the remaining numbered items.
+
+DOCUMENT (for reference):
+${truncatedText.substring(0, 50000)}
+
+YOUR OUTPUT SO FAR (last few items):
+${output.split('\n').slice(-10).join('\n')}
+
+Continue with item ${lastCount + 1}:`;
+                
+                const contResponse = await anthropic.messages.create({
+                  model: "claude-sonnet-4-20250514",
+                  max_tokens: 8000,
+                  messages: [{ role: "user", content: continuationPrompt }]
+                }, { timeout: 300000 });
+                
+                const contText = contResponse.content[0].type === 'text' ? contResponse.content[0].text : '';
+                output = output + '\n' + contText;
+              }
+            }
+            
+            // DEDUCT CREDITS
+            if (user?.id && hasCredits) {
+              const finalWordCount = output.trim().split(/\s+/).length;
+              const tokensGenerated = finalWordCount * 1.3;
+              const provider = llmProvider || 'anthropic';
+              const creditResult = await checkAndDeductCredits(user.id, user.username, provider, Math.ceil(tokensGenerated));
+              if (creditResult.creditsDeducted) {
+                console.log(`[CREDITS] Deducted ${creditResult.creditsDeducted} credits for direct format (${finalWordCount} words)`);
+              }
+            }
+            
+            return res.json({
+              success: true,
+              output: output.trim(),
+              mode: mode,
+              inputWordCount,
+              outputWordCount: output.trim().split(/\s+/).length,
+              reconstructionMethod: 'direct-format'
+            });
+          } catch (dfError: any) {
+            console.error('[Direct Format] Error:', dfError);
+            return res.status(500).json({
+              success: false,
+              message: `Direct format processing failed: ${dfError.message}`
+            });
+          }
+        }
         
         if (effectiveInstructions && hasExpansionInstructions(effectiveInstructions)) {
           const parsedInstructions = parseExpansionInstructions(effectiveInstructions);
