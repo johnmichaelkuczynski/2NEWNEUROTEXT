@@ -1956,14 +1956,29 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     const isExpansionRequest = hasExpansionInstructions(effectiveInstructions);
     const isInstructionsOnly = effectiveText.trim().length === 0;
     
+    // Check if this is a direct format request (bullet points, lists, etc.)
+    // These bypass WebSocket streaming on the server, so don't open the streaming modal
+    const directFormatPatterns = [
+      /\d+\s*(?:BULLET|BULLETING)\s*POINTS?/i,
+      /SUMMARIZE\s*(?:THIS\s*)?(?:AS|INTO|IN)\s*\d+/i,
+      /\d+\s*(?:KEY\s*)?(?:POINTS?|ITEMS?|TAKEAWAYS?|HIGHLIGHTS?|NOTES?)/i,
+      /(?:LIST|ENUMERATE|OUTLINE)\s*(?:THE\s*)?\d+/i,
+      /BULLET\s*POINT\s*(?:SUMMARY|LIST|FORMAT)/i,
+      /SUMMARIZE\s*(?:THIS\s*)?(?:AS|IN|INTO)\s*(?:BULLET|BULLETING)\s*POINTS?/i,
+    ];
+    const isDirectFormat = effectiveInstructions && directFormatPatterns.some(p => p.test(effectiveInstructions));
+    
     // For instructions-only mode, show appropriate message
     if (isInstructionsOnly) {
       setValidatorProgress("Generating content from instructions...");
-    } else if (isExpansionRequest) {
+    } else if (isExpansionRequest && !isDirectFormat) {
       // Open streaming modal for real-time preview - signal new generation
+      // Only for true expansion, NOT for direct format (bullet points etc.)
       setStreamingStartNew(true);
       setStreamingModalOpen(true);
       setValidatorProgress("Streaming output in real-time...");
+    } else if (isDirectFormat) {
+      setValidatorProgress("Processing direct format request...");
     } else if (wordCount >= 1200 && wordCount <= 25000) {
       setValidatorProgress("Extracting document structure (outline-first mode)...");
     } else if (wordCount > 25000) {
@@ -5494,29 +5509,19 @@ Generated on: ${new Date().toLocaleString()}`;
                   )}
                 </Button>
 
-                {/* OPEN PROGRESS POPUP - Always visible button to re-open streaming modal */}
-                <Button
-                  onClick={() => setStreamingModalOpen(true)}
-                  variant="outline"
-                  className="w-full border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 py-4 text-base font-medium"
-                  data-testid="button-open-progress-popup"
-                >
-                  <Eye className="w-5 h-5 mr-2" />
-                  Open Progress Popup
-                </Button>
-                
-                {/* View Results Button - Reopens popup when there's content */}
-                {(fullSuiteReconstructionOutput || objectionsOutput || fullSuiteObjectionProofOutput) && !fullSuitePopupOpen && (
+                {/* View Full Suite Progress/Results - Opens the Full Suite popup */}
+                {(fullSuiteLoading || fullSuiteReconstructionOutput || objectionsOutput || fullSuiteObjectionProofOutput) && (
                   <Button
                     onClick={() => setFullSuitePopupOpen(true)}
                     variant="outline"
-                    className="w-full border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/30"
-                    data-testid="button-view-full-suite-results"
+                    className="w-full border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 py-4 text-base font-medium"
+                    data-testid="button-open-progress-popup"
                   >
-                    <Eye className="w-4 h-4 mr-2" />
-                    View Full Suite Results
+                    <Eye className="w-5 h-5 mr-2" />
+                    {fullSuiteLoading ? 'Open Progress Popup' : 'View Full Suite Results'}
                   </Button>
                 )}
+                
 
                 {fullSuiteStage === "complete" && (
                   <div className="space-y-4">
