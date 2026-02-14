@@ -3165,17 +3165,16 @@ Structural understanding is always understanding of relationships. Observational
         const isDirectFormat = effectiveInstructions && directFormatPatterns.some(p => p.test(effectiveInstructions));
         
         if (isDirectFormat && hasText) {
-          // Strip auto-prepended "EXPAND TO X WORDS." directive - not relevant for direct format
           const cleanedInstructions = effectiveInstructions.replace(/^EXPAND\s+TO\s+\d+\s+WORDS?\.\s*/i, '').trim();
-          console.log(`[Direct Format] Detected non-prose format request: "${cleanedInstructions.substring(0, 100)}"`);
           
-          // Extract the count the user wants (e.g., "150" from "150 BULLET POINTS")
           const countMatch = cleanedInstructions.match(/(\d+)\s*(?:BULLET|BULLETING|KEY\s*)?(?:POINTS?|ITEMS?|TAKEAWAYS?|HIGHLIGHTS?|NOTES?)/i);
           const requestedCount = countMatch ? parseInt(countMatch[1]) : null;
           
-          // FREEMIUM CHECK: Users without credits get limited output
+          const targetWords = parsedTargetWordCount > 0 ? parsedTargetWordCount : null;
+          console.log(`[Direct Format] Detected: "${cleanedInstructions.substring(0, 100)}" | Items: ${requestedCount} | Target words: ${targetWords}`);
+          
           if (!hasCredits) {
-            console.log(`[Direct Format] FREEMIUM: User has no credits - limiting output`);
+            console.log(`[Direct Format] FREEMIUM: Limiting output`);
           }
           
           try {
@@ -3184,61 +3183,109 @@ Structural understanding is always understanding of relationships. Observational
             
             const truncatedText = effectiveText.length > 180000 ? effectiveText.substring(0, 180000) : effectiveText;
             
-            // For freemium users, cap the requested count
             const effectiveCount = requestedCount
               ? (!hasCredits ? Math.min(requestedCount, 20) : requestedCount)
               : null;
+            const effectiveTargetWords = targetWords
+              ? (!hasCredits ? Math.min(targetWords, 500) : targetWords)
+              : null;
             
-            if (!hasCredits && requestedCount && requestedCount > 20) {
-              console.log(`[Direct Format] FREEMIUM: Capping ${requestedCount} items to 20`);
-            }
+            const wordCountInstruction = effectiveTargetWords
+              ? `\nWORD COUNT REQUIREMENT: The total output MUST be approximately ${effectiveTargetWords} words. Each item should be DETAILED and SUBSTANTIVE - not one-liners. Write multi-sentence explanations for each item to reach the target word count. Do NOT produce short, terse items. Elaborate thoroughly on each point.`
+              : '';
             
-            const directPrompt = `You are given a document. Follow the user's instructions EXACTLY. Do not add commentary, abstracts, introductions, or any framing. Do not add headers like "EXPANDED ANALYSIS" or "Key Points". Just produce EXACTLY what the user asked for.
+            const countInstruction = effectiveCount
+              ? `\nITEM COUNT: You MUST produce EXACTLY ${effectiveCount} items. Number each item sequentially from 1 to ${effectiveCount}.`
+              : '';
+            
+            const directPrompt = `You are given a document. Follow the user's instructions EXACTLY.
+
+ABSOLUTE RULES:
+- Output ONLY what was requested
+- NO commentary, NO abstracts, NO introductions, NO conclusions, NO framing
+- NO headers like "EXPANDED ANALYSIS" or "Key Points" or "Summary"
+- NO metadata of any kind
+- Start DIRECTLY with item 1
+${wordCountInstruction}
+${countInstruction}
 
 USER'S INSTRUCTIONS: ${cleanedInstructions}
-
-${effectiveCount ? `CRITICAL: You MUST produce EXACTLY ${effectiveCount} items. Not ${Math.max(1, effectiveCount - 50)}. Not ${Math.max(1, effectiveCount - 10)}. EXACTLY ${effectiveCount}. Count them as you write. Number each item sequentially from 1 to ${effectiveCount}.` : ''}
 
 DOCUMENT:
 ${truncatedText}
 
-NOW FOLLOW THE INSTRUCTIONS ABOVE. Output ONLY what was requested. No commentary. No framing. No abstracts. No introductions. Start directly with item 1.${effectiveCount ? ` Remember: EXACTLY ${effectiveCount} items, numbered 1 through ${effectiveCount}.` : ''}`;
+BEGIN OUTPUT NOW. Start directly with item 1. No preamble.`;
 
+            const neededTokens = effectiveTargetWords ? Math.ceil(effectiveTargetWords * 1.5) : 8000;
+            const maxTokensPerCall = Math.min(neededTokens, 16000);
+            
             const response = await anthropic.messages.create({
               model: "claude-sonnet-4-20250514",
-              max_tokens: 8000,
+              max_tokens: maxTokensPerCall,
               messages: [{ role: "user", content: directPrompt }]
             }, { timeout: 300000 });
             
             let output = response.content[0].type === 'text' ? response.content[0].text : '';
+            let currentWordCount = output.trim().split(/\s+/).length;
             
-            // If we got cut off (max_tokens) and didn't finish, continue
-            if (response.stop_reason === 'max_tokens' && effectiveCount) {
-              const lastNumber = output.match(/(\d+)\.\s+[^\n]+/g);
-              const lastCount = lastNumber ? lastNumber.length : 0;
+            // CONTINUATION: Keep going if we haven't hit word count OR item count targets
+            const needsMoreWords = effectiveTargetWords && currentWordCount < effectiveTargetWords * 0.85;
+            const needsMoreItems = effectiveCount && (() => {
+              const items = output.match(/^\d+\.\s+/gm);
+              return items ? items.length < effectiveCount : true;
+            })();
+            
+            let continuationAttempts = 0;
+            const maxContinuations = 3;
+            
+            while ((response.stop_reason === 'max_tokens' || needsMoreWords || needsMoreItems) && continuationAttempts < maxContinuations) {
+              continuationAttempts++;
+              const currentItems = output.match(/^\d+\.\s+/gm);
+              const lastItemCount = currentItems ? currentItems.length : 0;
+              currentWordCount = output.trim().split(/\s+/).length;
               
-              if (lastCount < effectiveCount) {
-                console.log(`[Direct Format] Got ${lastCount}/${effectiveCount} items, continuing...`);
-                const continuationPrompt = `Continue from where you left off. You were producing ${effectiveCount} items about a document. You completed ${lastCount} items. Continue from item ${lastCount + 1} through ${effectiveCount}. Output ONLY the remaining numbered items.
+              const wordsRemaining = effectiveTargetWords ? effectiveTargetWords - currentWordCount : 0;
+              const itemsRemaining = effectiveCount ? effectiveCount - lastItemCount : 0;
+              
+              if (wordsRemaining <= 100 && itemsRemaining <= 0) break;
+              
+              console.log(`[Direct Format] Continuation ${continuationAttempts}: ${currentWordCount} words (target: ${effectiveTargetWords || 'N/A'}), ${lastItemCount} items (target: ${effectiveCount || 'N/A'})`);
+              
+              const continuationPrompt = `Continue from where you left off. You were producing items about a document.
+${effectiveCount ? `Target: ${effectiveCount} items total. You completed ${lastItemCount}. Continue from item ${lastItemCount + 1}.` : ''}
+${effectiveTargetWords ? `Target word count: ${effectiveTargetWords} words. Current: ${currentWordCount} words. You need approximately ${wordsRemaining} more words. Make each remaining item DETAILED and SUBSTANTIVE.` : ''}
 
-DOCUMENT (for reference):
-${truncatedText.substring(0, 50000)}
+Output ONLY the remaining numbered items. No commentary. No framing. Continue directly:
 
-YOUR OUTPUT SO FAR (last few items):
-${output.split('\n').slice(-10).join('\n')}
+YOUR LAST FEW ITEMS:
+${output.split('\n').slice(-8).join('\n')}
 
-Continue with item ${lastCount + 1}:`;
-                
-                const contResponse = await anthropic.messages.create({
-                  model: "claude-sonnet-4-20250514",
-                  max_tokens: 8000,
-                  messages: [{ role: "user", content: continuationPrompt }]
-                }, { timeout: 300000 });
-                
-                const contText = contResponse.content[0].type === 'text' ? contResponse.content[0].text : '';
-                output = output + '\n' + contText;
-              }
+Continue:`;
+              
+              const contTokens = Math.min(Math.ceil(Math.max(wordsRemaining * 1.5, 4000)), 16000);
+              const contResponse = await anthropic.messages.create({
+                model: "claude-sonnet-4-20250514",
+                max_tokens: contTokens,
+                messages: [{ role: "user", content: continuationPrompt }]
+              }, { timeout: 300000 });
+              
+              const contText = contResponse.content[0].type === 'text' ? contResponse.content[0].text : '';
+              if (contText.trim().length === 0) break;
+              output = output + '\n' + contText;
+              
+              currentWordCount = output.trim().split(/\s+/).length;
+              const newItems = output.match(/^\d+\.\s+/gm);
+              const newItemCount = newItems ? newItems.length : 0;
+              
+              const stillNeedsWords = effectiveTargetWords && currentWordCount < effectiveTargetWords * 0.85;
+              const stillNeedsItems = effectiveCount && newItemCount < effectiveCount;
+              if (!stillNeedsWords && !stillNeedsItems) break;
+              if (contResponse.stop_reason !== 'max_tokens' && !stillNeedsWords) break;
             }
+            
+            // Strip any metadata/commentary that slipped through
+            output = output.replace(/^(?:Here (?:are|is)|Below (?:are|is)|The following|Summary|Analysis|Output|Response)[^\n]*\n/i, '');
+            output = output.replace(/\n(?:In (?:conclusion|summary)|Overall|To summarize|These (?:are|represent))[^\n]*$/i, '');
             
             // DEDUCT CREDITS
             if (user?.id && hasCredits) {
