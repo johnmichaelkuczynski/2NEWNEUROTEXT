@@ -330,7 +330,6 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [validatorInputText, setValidatorInputText] = useState("");
   const [uploadedDocuments, setUploadedDocuments] = useState<Array<{id: string; filename: string; content: string; wordCount: number}>>([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
-  const [libraryInstructions, setLibraryInstructions] = useState("");
   const [libraryDragOver, setLibraryDragOver] = useState(false);
   const [streamingProjectId, setStreamingProjectId] = useState<number | null>(null);
   const [dwUploadedDocuments, setDwUploadedDocuments] = useState<Array<{id: string; filename: string; content: string; wordCount: number}>>([]);
@@ -1791,7 +1790,6 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     
     // Document Library
     setUploadedDocuments([]);
-    setLibraryInstructions("");
     setSelectedDocumentIds(new Set());
     
     // Rewrite results
@@ -5260,30 +5258,16 @@ Generated on: ${new Date().toLocaleString()}`;
                   </div>
                 ))}
                 
-                {/* Instructions for selected documents */}
                 {selectedDocumentIds.size > 0 && (
-                  <div className="mt-4 space-y-3">
-                    <label className="block text-sm font-medium text-blue-800 dark:text-blue-200">
-                      Instructions for selected documents:
-                    </label>
-                    <Textarea
-                      value={libraryInstructions}
-                      onChange={(e) => setLibraryInstructions(e.target.value)}
-                      placeholder="e.g., COMBINE THESE INTO A SINGLE COHESIVE WORK ON SYSTEMS SCIENCE&#10;or: EXTRACT THE KEY ARGUMENTS FROM EACH AND SYNTHESIZE&#10;or: COMPARE AND CONTRAST THE MAIN THEMES"
-                      className="min-h-[80px] text-sm"
-                      data-testid="textarea-library-instructions"
-                    />
+                  <div className="mt-4">
                     <Button
                       onClick={() => {
                         const selectedDocs = uploadedDocuments.filter(d => selectedDocumentIds.has(d.id));
                         const combinedContent = combineDocuments(selectedDocs);
                         setValidatorInputText(combinedContent);
-                        if (libraryInstructions.trim()) {
-                          setValidatorCustomInstructions(libraryInstructions);
-                        }
                         toast({
                           title: "Documents Loaded",
-                          description: `${selectedDocs.length} document${selectedDocs.length > 1 ? 's' : ''} loaded. ${libraryInstructions ? 'Instructions applied.' : 'Add instructions below or run operations.'}`,
+                          description: `${selectedDocs.length} document${selectedDocs.length > 1 ? 's' : ''} loaded into input. Use the Instructions box below to add any directions.`,
                         });
                       }}
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white"
